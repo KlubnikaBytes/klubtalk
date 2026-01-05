@@ -1,6 +1,7 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class ApiConfig {
-  // Replace with your actual VPS URL
-  static const String baseUrl = 'https://api.your-vps-domain.com';
+  static String get baseUrl => dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:3000';
   
   static const String uploadAudioEndpoint = '$baseUrl/upload/audio';
   static const String uploadImageEndpoint = '$baseUrl/upload/image';

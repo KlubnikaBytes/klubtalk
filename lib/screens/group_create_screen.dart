@@ -4,6 +4,9 @@ import 'package:whatsapp_clone/mock_data/contacts.dart';
 import 'package:whatsapp_clone/widgets/contact_list_tile.dart';
 import 'package:whatsapp_clone/widgets/selected_contact_avatar.dart';
 import 'package:whatsapp_clone/theme/app_theme.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:whatsapp_clone/services/chat_service.dart';
+import 'package:whatsapp_clone/services/media_upload_service.dart';
 
 class GroupCreateScreen extends StatefulWidget {
   const GroupCreateScreen({super.key});
@@ -13,7 +16,7 @@ class GroupCreateScreen extends StatefulWidget {
 }
 
 class _GroupCreateScreenState extends State<GroupCreateScreen> {
-  // Store selected IDs to manage state locally without mutating mock data
+  // Store selected IDs
   final Set<String> _selectedIds = {};
   
   // Get all contacts from mock
@@ -93,10 +96,7 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
       floatingActionButton: _selectedIds.isNotEmpty
           ? FloatingActionButton(
               onPressed: () {
-                // Navigate to next screen (Group Name) - mock action
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Next: Group Subject')),
-                );
+                _showGroupCreationDialog(context);
               },
               backgroundColor: AppTheme.accentGreen, // WhatsApp Brand Color
               child: const Icon(Icons.arrow_forward, color: Colors.white),
@@ -104,4 +104,88 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
           : null,
     );
   }
-}
+
+  void _showGroupCreationDialog(BuildContext context) {
+    final TextEditingController nameController = TextEditingController();
+    String? _uploadedIconUrl;
+    bool _isUploading = false;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('New Group'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () async {
+                      if (_isUploading) return;
+                      final picker = ImagePicker();
+                      final image = await picker.pickImage(source: ImageSource.gallery);
+                      if (image != null) {
+                        setState(() => _isUploading = true);
+                        try {
+                           final service = MediaUploadService();
+                           // Use mock/real service
+                           final url = await service.uploadGroupIcon(image.path);
+                           setState(() {
+                             _uploadedIconUrl = url;
+                             _isUploading = false;
+                           });
+                        } catch (e) {
+                          setState(() => _isUploading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+                        }
+                      }
+                    },
+                    child: CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Colors.grey[300],
+                      backgroundImage: _uploadedIconUrl != null ? NetworkImage(_uploadedIconUrl!) : null,
+                      child: _isUploading 
+                         ? const CircularProgressIndicator() 
+                         : (_uploadedIconUrl == null ? const Icon(Icons.camera_alt, color: Colors.grey) : null),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      hintText: 'Group Subject',
+                      border: UnderlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    if (nameController.text.trim().isEmpty) return;
+                    
+                    final chatService = ChatService();
+                    await chatService.createGroupChat(
+                      nameController.text.trim(), 
+                      _selectedIds.toList(),
+                      groupPhotoUrl: _uploadedIconUrl
+                    );
+                    
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context); // Close selection screen
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }

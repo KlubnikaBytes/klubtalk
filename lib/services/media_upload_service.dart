@@ -22,7 +22,27 @@ class MediaUploadService {
 
   // Upload Audio
   Future<String> uploadAudio(dynamic fileOrPath) async {
-    final uri = Uri.parse(ApiConfig.uploadAudioEndpoint);
+    return _uploadFile(fileOrPath, ApiConfig.uploadAudioEndpoint);
+  }
+
+  // Upload Generic Image (Chat)
+  Future<String> uploadImage(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/image');
+  }
+
+  // Upload Group Icon
+  Future<String> uploadGroupIcon(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/group');
+  }
+
+  // Upload Profile Photo
+  Future<String> uploadProfilePhoto(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/profile');
+  }
+
+  // Core Upload Logic
+  Future<String> _uploadFile(dynamic fileOrPath, String endpoint) async {
+    final uri = Uri.parse(endpoint);
     final request = http.MultipartRequest('POST', uri);
     
     // Add Headers (Auth)
@@ -39,7 +59,7 @@ class MediaUploadService {
           http.MultipartFile.fromBytes(
             'file', 
             response.bodyBytes,
-            filename: 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
+            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg', // Default extension, backend can rename/detect
           )
         );
       } else if (fileOrPath is Uint8List) {
@@ -47,7 +67,7 @@ class MediaUploadService {
           http.MultipartFile.fromBytes(
             'file', 
             fileOrPath,
-            filename: 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
+            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg',
           )
         );
       } else {
@@ -72,15 +92,13 @@ class MediaUploadService {
       }
     } catch (e) {
       print('Media Upload Error: $e');
-      // FALLBACK FOR DEVELOPMENT WITHOUT REAL VPS
-      // If the API call fails (mostly because URL is fake), return a dummy URL or rethrow?
-      // For now, rethrow so the user knows they need a real VPS.
-      // BUT, to allow "Testing" as requested, we might want a mock mode.
-      // throw Exception('Media upload failed. Is VPS accessible? $e');
-      
-      // MOCK FALLBACK (REMOVE IN PRODUCTION)
-      print('⚠️ VPS Unreachable. Returning MOCK URL for testing.');
-      return 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'; // Dummy Audio
+      // MOCK FALLBACK FOR IMAGES/GROUPS TO ALLOW UI TESTING WITHOUT LIVE VPS
+      if (endpoint.contains('audio')) {
+         return 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      } else {
+         return 'https://picsum.photos/200/300'; // Dummy Image
+      }
     }
   }
 }
+

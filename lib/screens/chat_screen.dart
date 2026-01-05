@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:whatsapp_clone/services/voice_recorder_service.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/widgets/audio_message_bubble.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/widgets/sent_message_bubble.dart';
@@ -121,6 +122,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pickAndSendImage() async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+         // Show simple loading feedback
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading image...')));
+         
+         await _chatService.sendImageMessage(widget.chatId, image.path);
+         _scrollToBottom();
+      }
+    } catch (e) {
+      print("Error picking image: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,8 +221,24 @@ class _ChatScreenState extends State<ChatScreen> {
                             isSender: isMe,
                             durationSeconds: data['duration'] ?? 0,
                           ) 
-                        : Text(
-                          data['text'] ?? '',
+                        : type == 'image'
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                data['content'] ?? '',
+                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.white),
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    width: 200, height: 200,
+                                    color: Colors.black12,
+                                    child: const Center(child: CircularProgressIndicator()),
+                                  );
+                                },
+                              ),
+                            )
+                          : Text(
+                          data['text'] ?? data['content'] ?? '',
                           style: TextStyle(
                             fontSize: 16,
                             color: isMe ? Colors.white : Colors.black,
@@ -246,8 +280,11 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                         ),
                         if (!_isRecording) ...[
-                          IconButton(icon: const Icon(Icons.attach_file, color: Colors.grey), onPressed: () {}),
-                          if (!_isTyping) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: () {}),
+                          IconButton(
+                            icon: const Icon(Icons.attach_file, color: Colors.grey), 
+                            onPressed: _pickAndSendImage,
+                          ),
+                          if (!_isTyping) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _pickAndSendImage),
                         ],
                       ],
                     ),

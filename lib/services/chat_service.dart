@@ -99,6 +99,43 @@ class ChatService {
       print('Error sending voice message: $e');
       rethrow;
     }
+  // Send Generic Media Message
+  Future<void> sendImageMessage(String chatId, String filePath) async {
+    final currentUserId = _auth.currentUser!.uid;
+    final timestamp = FieldValue.serverTimestamp();
+    final messageId = FirebaseFirestore.instance.collection('chats').doc().id;
+
+    try {
+      // 1. Upload to VPS
+      final uploadService = MediaUploadService();
+      final imageUrl = await uploadService.uploadImage(filePath);
+
+      // 2. Add Message
+      await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .set({
+        'senderId': currentUserId,
+        'type': 'image',
+        'content': imageUrl, // Using 'content' for text/image url, unlike 'audioUrl'
+        'timestamp': timestamp,
+        'seen': false,
+      });
+
+      // 3. Update Metadata
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': '📷 Photo',
+        'lastMessageTime': timestamp,
+      });
+
+      // 4. Update User Meta
+      await _updateChatMetaForNewMessage(chatId, timestamp);
+    } catch (e) {
+      print('Error sending image: $e');
+      rethrow;
+    }
   }
 
   // Helper: Update Metadata for Participants
@@ -166,7 +203,7 @@ class ChatService {
   }
 
   // Create Group Chat
-  Future<String> createGroupChat(String groupName, List<String> participantUids) async {
+  Future<String> createGroupChat(String groupName, List<String> participantUids, {String? groupPhotoUrl}) async {
     final currentUserId = _auth.currentUser!.uid;
     // Ensure current user is in participants
     final allParticipants = {...participantUids, currentUserId}.toList();
@@ -176,7 +213,7 @@ class ChatService {
     await newChatDoc.set({
       'isGroup': true,
       'groupName': groupName,
-      'groupPhoto': '', // Placeholder
+      'groupPhoto': groupPhotoUrl ?? '', 
       'createdBy': currentUserId,
       'participants': allParticipants,
       'lastMessage': 'Group created',
