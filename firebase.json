@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "whatsapp-34bcf",
+          "appId": "1:1051682694104:android:32e839abdcaf970113c8ad",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "whatsapp-34bcf",
+          "configurations": {
+            "android": "1:1051682694104:android:32e839abdcaf970113c8ad",
+            "ios": "1:1051682694104:ios:6396e78a87992f3613c8ad",
+            "macos": "1:1051682694104:ios:6396e78a87992f3613c8ad",
+            "web": "1:1051682694104:web:d1274e5abbc0dff213c8ad",
+            "windows": "1:1051682694104:web:ecb7c0f7ddbe4a2d13c8ad"
+          }
+        }
+      }
+    }
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
