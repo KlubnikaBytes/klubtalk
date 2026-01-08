@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/screens/group_info_screen.dart';
-
-class DummyContact {
-  final String id;
-  final String name;
-  final String phone;
-
-  DummyContact({required this.id, required this.name, required this.phone});
-}
+import 'package:whatsapp_clone/services/contact_service.dart';
+import 'package:whatsapp_clone/services/chat_service.dart'; // For Auth
+import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
 class GroupParticipantSelectScreen extends StatefulWidget {
   const GroupParticipantSelectScreen({super.key});
@@ -17,28 +14,48 @@ class GroupParticipantSelectScreen extends StatefulWidget {
 }
 
 class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScreen> {
-  final List<DummyContact> _dummyContacts = [
-    DummyContact(id: '1', name: 'Amit Sharma', phone: '+91 98765 43210'),
-    DummyContact(id: '2', name: 'Riya Sen', phone: '+91 87654 32109'),
-    DummyContact(id: '3', name: 'Rahul Das', phone: '+91 76543 21098'),
-    DummyContact(id: '4', name: 'Sneha Paul', phone: '+91 65432 10987'),
-    DummyContact(id: '5', name: 'Kabir Roy', phone: '+91 54321 09876'),
-  ];
-
+  final ContactService _contactService = ContactService();
+  final ChatService _chatService = ChatService(); // Assuming it exposes auth or we use FirebaseAuth direct
+  
+  List<UserModel> _contacts = [];
+  bool _isLoading = true;
   final Set<String> _selectedIds = {};
 
-  void _toggleSelection(String id) {
+  @override
+  void initState() {
+    super.initState();
+    _fetchContacts();
+  }
+
+  Future<void> _fetchContacts() async {
+    try {
+      final users = await _contactService.getRegisteredUsers();
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      
+      if (mounted) {
+        setState(() {
+          // Filter out self
+          _contacts = users.where((u) => u.uid != currentUid).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+      print("Error loading contacts: $e");
+    }
+  }
+
+  void _toggleSelection(String uid) {
     setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
+      if (_selectedIds.contains(uid)) {
+        _selectedIds.remove(uid);
       } else {
-        _selectedIds.add(id);
+        _selectedIds.add(uid);
       }
     });
   }
 
   void _goToGroupInfo() {
-    // Pass selected IDs to next screen
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -53,7 +70,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF9575CD), // Purple Theme
+        backgroundColor: const Color(0xFF9575CD),
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,7 +83,9 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
           IconButton(icon: const Icon(Icons.search), onPressed: () {}),
         ],
       ),
-      body: Column(
+      body: _isLoading 
+          ? const Center(child: CircularProgressIndicator()) 
+          : Column(
         children: [
           // Selected Chips
           if (_selectedIds.isNotEmpty)
@@ -76,16 +95,24 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 children: _selectedIds.map((id) {
-                  final contact = _dummyContacts.firstWhere((c) => c.id == id);
+                  final contact = _contacts.firstWhere((c) => c.uid == id, orElse: () => UserModel(uid: id, phoneNumber: '', name: 'Unknown', isOnline: false, lastSeen: null, profilePhotoUrl: '', about: ''));
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Column(
                       children: [
-                        const CircleAvatar(
-                          radius: 15,
-                          backgroundColor: Colors.grey,
-                          child: Icon(Icons.person, size: 20, color: Colors.white),
+                        Stack(
+                          children: [
+                            AvatarWidget(imageUrl: contact.profilePhotoUrl, radius: 15),
+                            Positioned(
+                               bottom: 0, right: 0,
+                               child: GestureDetector(
+                                 onTap: () => _toggleSelection(id),
+                                 child: const CircleAvatar(radius: 6, backgroundColor: Colors.grey, child: Icon(Icons.close, size: 8, color: Colors.white))
+                               )
+                            )
+                          ], 
                         ),
+                        const SizedBox(height: 2),
                         Text(contact.name.split(' ')[0], style: const TextStyle(fontSize: 10)),
                       ],
                     ),
@@ -96,19 +123,15 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
           
           Expanded(
             child: ListView.builder(
-              itemCount: _dummyContacts.length,
+              itemCount: _contacts.length,
               itemBuilder: (context, index) {
-                final contact = _dummyContacts[index];
-                final isSelected = _selectedIds.contains(contact.id);
+                final contact = _contacts[index];
+                final isSelected = _selectedIds.contains(contact.uid);
                 
                 return ListTile(
                   leading: Stack(
                     children: [
-                      const CircleAvatar(
-                        radius: 22,
-                        backgroundColor: Colors.grey,
-                        child: Icon(Icons.person, color: Colors.white),
-                      ),
+                      AvatarWidget(imageUrl: contact.profilePhotoUrl, radius: 22),
                       if (isSelected)
                         const Positioned(
                           bottom: 0,
@@ -121,9 +144,9 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
                         ),
                     ],
                   ),
-                  title: Text(contact.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(contact.phone),
-                  onTap: () => _toggleSelection(contact.id),
+                  title: Text(contact.name.isEmpty ? contact.phoneNumber : contact.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(contact.about, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => _toggleSelection(contact.uid),
                 );
               },
             ),

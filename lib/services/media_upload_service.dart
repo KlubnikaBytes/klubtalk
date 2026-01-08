@@ -20,28 +20,23 @@ class MediaUploadService {
     };
   }
 
-  // Upload Audio
-  Future<String> uploadAudio(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, ApiConfig.uploadAudioEndpoint);
+  // Upload Voice Message
+  Future<String> uploadVoice(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, ApiConfig.uploadVoiceEndpoint, fieldName: 'voice');
   }
 
-  // Upload Generic Image (Chat)
+  // Upload Chat Image
   Future<String> uploadImage(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/image');
+    return _uploadFile(fileOrPath, ApiConfig.uploadImageEndpoint, fieldName: 'image');
   }
 
-  // Upload Group Icon
-  Future<String> uploadGroupIcon(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/group');
-  }
-
-  // Upload Profile Photo
-  Future<String> uploadProfilePhoto(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, '${ApiConfig.baseUrl}/upload/profile');
+  // Upload Profile Avatar
+  Future<String> uploadAvatar(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, ApiConfig.uploadAvatarEndpoint, fieldName: 'avatar');
   }
 
   // Core Upload Logic
-  Future<String> _uploadFile(dynamic fileOrPath, String endpoint) async {
+  Future<String> _uploadFile(dynamic fileOrPath, String endpoint, {String fieldName = 'file'}) async {
     final uri = Uri.parse(endpoint);
     final request = http.MultipartRequest('POST', uri);
     
@@ -50,33 +45,39 @@ class MediaUploadService {
 
     // Add File
     if (kIsWeb) {
+      String extension = 'jpg';
+      if (fieldName == 'voice') {
+        extension = 'mp3'; // Default for web audio blobs
+      }
+
       if (fileOrPath is String && (fileOrPath.startsWith('blob:') || fileOrPath.startsWith('http'))) {
-        // Fetch Blob data first
+        // Fetch Blob data from Blob URL
         final response = await http.get(Uri.parse(fileOrPath));
         if (response.statusCode != 200) throw Exception('Failed to read blob data');
         
         request.files.add(
           http.MultipartFile.fromBytes(
-            'file', 
+            fieldName, 
             response.bodyBytes,
-            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg', // Default extension, backend can rename/detect
+            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.$extension', 
           )
         );
       } else if (fileOrPath is Uint8List) {
-         request.files.add(
+        request.files.add(
           http.MultipartFile.fromBytes(
-            'file', 
+            fieldName, 
             fileOrPath,
-            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg',
+            filename: 'upload_${DateTime.now().millisecondsSinceEpoch}.$extension',
           )
         );
       } else {
-        throw Exception('Unsupported web file format');
+         // Fallback or error
+         throw Exception('Unsupported web file format');
       }
     } else {
       // Mobile: Expecting String path or File object
       String path = fileOrPath is File ? fileOrPath.path : fileOrPath.toString();
-      request.files.add(await http.MultipartFile.fromPath('file', path));
+      request.files.add(await http.MultipartFile.fromPath(fieldName, path));
     }
 
     // Send
@@ -92,12 +93,7 @@ class MediaUploadService {
       }
     } catch (e) {
       print('Media Upload Error: $e');
-      // MOCK FALLBACK FOR IMAGES/GROUPS TO ALLOW UI TESTING WITHOUT LIVE VPS
-      if (endpoint.contains('audio')) {
-         return 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-      } else {
-         return 'https://picsum.photos/200/300'; // Dummy Image
-      }
+      rethrow;
     }
   }
 }

@@ -1,226 +1,256 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/services/media_upload_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Helper to get headers with Auth Token
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await _auth.currentUser?.getIdToken();
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+  }
 
   // Create or Get existing Chat ID
   Future<String> createOrGetChat(String otherUserId) async {
-    final currentUserId = _auth.currentUser!.uid;
-    
-    // Check if chat exists (We use a deterministic ID for 1-to-1 chats: uid1_uid2 sorted)
-    List<String> ids = [currentUserId, otherUserId];
-    ids.sort();
-    String chatId = ids.join('_');
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.chatsEndpoint}/private'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'participantId': otherUserId}),
+      );
 
-    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
-
-    if (!chatDoc.exists) {
-      // Create new chat document
-      await _firestore.collection('chats').doc(chatId).set({
-        'participants': ids,
-        'lastMessage': '',
-        'lastMessageTime': FieldValue.serverTimestamp(), // To show at top initially or handle sorting
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        print("✅ createOrGetChat Success: ${data['chatId']}");
+        return data['chatId'];
+      } else {
+        print("❌ createOrGetChat Failed: ${response.statusCode} - ${response.body}");
+        throw Exception('Failed to create chat: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Chat Creation Error: $e');
+      rethrow;
     }
-
-    return chatId;
   }
 
-  // Send Message and Update Chat Metadata
+  // Send Text Message
   Future<void> sendMessage(String chatId, String text) async {
-    final currentUserId = _auth.currentUser!.uid;
-    final timestamp = FieldValue.serverTimestamp();
-
-    // 1. Add Message
-    await _firestore
-        .collection('chats')
-        .doc(chatId)
-        .collection('messages')
-        .add({
-      'senderId': currentUserId,
-      'text': text,
-      'timestamp': timestamp,
-      'seen': false,
-    });
-
-    // 2. Update Chat Metadata (for the chat list)
-    await _firestore.collection('chats').doc(chatId).update({
-      'lastMessage': text,
-      'lastMessageTime': timestamp,
-    });
-
-    // 3. Update User Meta
-    await _updateChatMetaForNewMessage(chatId, timestamp);
+    await _sendMessageToBackend(chatId, text, 'text');
   }
 
   // Send Voice Message
-  Future<void> sendVoiceMessage(String chatId, String filePath, int durationSeconds) async {
-    final currentUserId = _auth.currentUser!.uid;
-    final timestamp = FieldValue.serverTimestamp();
-    final messageId =  FirebaseFirestore.instance.collection('chats').doc().id; // Auto ID
-
+  Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds) async {
     try {
-      // 1. Upload File via VPS Service
       final uploadService = MediaUploadService();
-      final downloadUrl = await uploadService.uploadAudio(filePath);
-
-      // 2. Add Message to Firestore
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId) // Use the same ID
-          .set({
-        'senderId': currentUserId,
-        'type': 'audio',
-        'audioUrl': downloadUrl,
-        'duration': durationSeconds,
-        'timestamp': timestamp,
-        'seen': false,
-      });
-
-      // 3. Update Chat Metadata
-      await _firestore.collection('chats').doc(chatId).update({
-        'lastMessage': '🎙️ Voice message',
-        'lastMessageTime': timestamp,
-      });
-
-      // 4. Update User-Specific Metadata (Increment Unread for others)
-      await _updateChatMetaForNewMessage(chatId, timestamp);
-      
+      final url = await uploadService.uploadVoice(fileOrPath);
+      await _sendMessageToBackend(chatId, url, 'voice', duration: durationSeconds);
     } catch (e) {
-      print('Error sending voice message: $e');
-      rethrow;
-    }
-  // Send Generic Media Message
-  Future<void> sendImageMessage(String chatId, String filePath) async {
-    final currentUserId = _auth.currentUser!.uid;
-    final timestamp = FieldValue.serverTimestamp();
-    final messageId = FirebaseFirestore.instance.collection('chats').doc().id;
-
-    try {
-      // 1. Upload to VPS
-      final uploadService = MediaUploadService();
-      final imageUrl = await uploadService.uploadImage(filePath);
-
-      // 2. Add Message
-      await _firestore
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId)
-          .set({
-        'senderId': currentUserId,
-        'type': 'image',
-        'content': imageUrl, // Using 'content' for text/image url, unlike 'audioUrl'
-        'timestamp': timestamp,
-        'seen': false,
-      });
-
-      // 3. Update Metadata
-      await _firestore.collection('chats').doc(chatId).update({
-        'lastMessage': '📷 Photo',
-        'lastMessageTime': timestamp,
-      });
-
-      // 4. Update User Meta
-      await _updateChatMetaForNewMessage(chatId, timestamp);
-    } catch (e) {
-      print('Error sending image: $e');
+      print('Voice Send Error: $e');
       rethrow;
     }
   }
 
-  // Helper: Update Metadata for Participants
-  Future<void> _updateChatMetaForNewMessage(String chatId, FieldValue timestamp) async {
-    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
-    final participants = List<String>.from(chatDoc['participants']);
-    final currentUserId = _auth.currentUser!.uid;
+  // Send Image Message
+  Future<void> sendImageMessage(String chatId, dynamic fileOrPath) async {
+    try {
+      final uploadService = MediaUploadService();
+      final url = await uploadService.uploadImage(fileOrPath);
+      await _sendMessageToBackend(chatId, url, 'image');
+    } catch (e) {
+      print('Image Send Error: $e');
+      rethrow;
+    }
+  }
 
-    final batch = _firestore.batch();
+  // Helper: Post Message to Backend
+  Future<void> _sendMessageToBackend(String chatId, String content, String type, {int? duration}) async {
+    try {
+      final response = await http.post(
+        Uri.parse(ApiConfig.messagesEndpoint),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          'chatId': chatId,
+          'content': content,
+          'type': type,
+          if (duration != null) 'duration': duration,
+        }),
+      );
 
-    for (var userId in participants) {
-      final docRef = _firestore.collection('users').doc(userId).collection('chatMeta').doc(chatId);
-      
-      if (userId == currentUserId) {
-        // For Sender: Reset Unread, Update Time
-        batch.set(docRef, {
-          'unreadCount': 0,
-          'lastSeenMessageTime': timestamp,
-        }, SetOptions(merge: true));
-      } else {
-        // For Receiver: Increment Unread
-        batch.set(docRef, {
-          'unreadCount': FieldValue.increment(1),
-          // We don't update lastSeenMessageTime for receiver until they open it? 
-          // Actually, keeping it updated helps sorting "All" if we switched to meta-only.
-          // For now, let's just update unread.
-        }, SetOptions(merge: true));
+      if (response.statusCode != 201) {
+        throw Exception('Failed to send message: ${response.body}');
       }
+    } catch (e) {
+      print('Send Message API Error: $e');
+      rethrow;
     }
-    
-    await batch.commit();
   }
 
-  // Toggle Favorite
-  Future<void> toggleFavorite(String chatId, bool isFavorite) async {
-    final uid = _auth.currentUser!.uid;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('chatMeta')
-        .doc(chatId)
-        .set({'isFavorite': isFavorite}, SetOptions(merge: true));
+  // Get My Chats
+  Future<List<Map<String, dynamic>>> getMyChats() async {
+    final response = await http.get(
+      Uri.parse(ApiConfig.chatsEndpoint),
+      headers: await _getHeaders(),
+    );
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    } else {
+      throw Exception('Failed to load chats');
+    }
   }
 
-  // Mark Read (Open Chat)
-  Future<void> markChatAsRead(String chatId) async {
-    final uid = _auth.currentUser!.uid;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('chatMeta')
-        .doc(chatId)
-        .set({'unreadCount': 0}, SetOptions(merge: true));
-  }
+  // Get Messages for a Chat
+  Future<List<Map<String, dynamic>>> getMessages(String chatId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.messagesEndpoint}/$chatId'),
+      headers: await _getHeaders(),
+    );
 
-  // Mark Unread (Manual)
-  Future<void> markChatAsUnread(String chatId) async {
-    final uid = _auth.currentUser!.uid;
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('chatMeta')
-        .doc(chatId)
-        .set({'unreadCount': 1}, SetOptions(merge: true)); // Set to 1 explicitly or increment? WhatsApp usually emphasizes it dot.
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    } else {
+      throw Exception('Failed to load messages');
+    }
   }
 
   // Create Group Chat
-  Future<String> createGroupChat(String groupName, List<String> participantUids, {String? groupPhotoUrl}) async {
-    final currentUserId = _auth.currentUser!.uid;
-    // Ensure current user is in participants
-    final allParticipants = {...participantUids, currentUserId}.toList();
-    
-    final newChatDoc = _firestore.collection('chats').doc();
-    
-    await newChatDoc.set({
-      'isGroup': true,
-      'groupName': groupName,
-      'groupPhoto': groupPhotoUrl ?? '', 
-      'createdBy': currentUserId,
-      'participants': allParticipants,
-      'lastMessage': 'Group created',
-      'lastMessageTime': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  Future<String> createGroupChat(String groupName, List<String> participantUids) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/group'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'groupName': groupName,
+        'participants': participantUids,
+      }),
+    );
 
-    return newChatDoc.id;
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['chatId'];
+    } else {
+      throw Exception('Failed to create group: ${response.body}');
+    }
+  }
+
+  // --- Missing Methods needed for UI ---
+
+  Future<void> markChatAsRead(String chatId) async {
+    // TODO: Implement backend endpoint for this
+    print('markChatAsRead not implemented yet for Hybrid Backend');
+  }
+
+  Future<void> markChatAsUnread(String chatId) async {
+     // TODO: Implement backend endpoint for this
+    print('markChatAsUnread not implemented yet for Hybrid Backend');
+  }
+
+  Future<void> toggleFavorite(String chatId) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/favorite'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'chatId': chatId}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to toggle favorite');
+    }
+  }
+
+  Future<void> toggleArchive(String chatId) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/archive'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'chatId': chatId}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to toggle archive');
+    }
+  }
+
+  // --- NEW FEATURES ---
+
+  Future<void> muteChat(String chatId, String? muteUntil) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/mute'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'chatId': chatId, 'muteUntil': muteUntil}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to mute chat');
+  }
+
+  Future<void> setDisappearingTimer(String chatId, int duration) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/disappearing'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'chatId': chatId, 'duration': duration}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to set timer');
+  }
+
+  Future<void> setChatTheme(String chatId, String wallpaper) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/wallpaper'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'chatId': chatId, 'wallpaper': wallpaper}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to set theme');
+  }
+
+  Future<void> reportChat(String chatId, {String? reportedUserId, String? reason, bool blockUser = false, bool deleteChat = false, List<Map<String, dynamic>>? lastMessages}) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/report'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'chatId': chatId,
+        'reportedUserId': reportedUserId,
+        'reason': reason,
+        'blockUser': blockUser,
+        'deleteChat': deleteChat,
+        'lastMessages': lastMessages
+      }),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to report chat');
+  }
+
+  Future<void> blockUser(String userId) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/users/block'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'targetUserId': userId}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to block user');
+  }
+
+  Future<void> unblockUser(String userId) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/users/unblock'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'targetUserId': userId}),
+    );
+    if (response.statusCode != 200) throw Exception('Failed to unblock user');
+  }
+
+  Future<List<String>> getBlockedUsers() async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+      headers: await _getHeaders(),
+    );
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final list = data['blockedUsers'];
+      if (list != null && list is List) {
+         return List<String>.from(list);
+      }
+      return [];
+    }
+    return [];
   }
 }

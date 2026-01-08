@@ -1,44 +1,72 @@
-import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/services/media_upload_service.dart';
 
 class UserService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   String get currentUid => _auth.currentUser!.uid;
 
-  // Get Current User Data
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await _auth.currentUser?.getIdToken();
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+  }
+
+  // Get Current User Data (Polling to simulate Realtime)
   Stream<UserModel> get currentUserStream {
-    return _firestore
-        .collection('users')
-        .doc(currentUid)
-        .snapshots()
-        .map((snapshot) => UserModel.fromMap(snapshot.data()!, snapshot.id));
+    return Stream.periodic(const Duration(seconds: 2))
+        .asyncMap((_) => _fetchUserProfile());
+  }
+
+  Future<UserModel> _fetchUserProfile() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+        headers: await _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return UserModel.fromMap(data, currentUid);
+      } else {
+        throw Exception('Failed to load profile');
+      }
+    } catch (e) {
+      print('Profile Fetch Error: $e');
+      // Return a dummy/cached user or rethrow? 
+      // Rethrowing will cause StreamBuilder error.
+      // Return default.
+      return UserModel(uid: currentUid, phoneNumber: '');
+    }
   }
 
   // Update Profile Info (Name, About)
   Future<void> updateProfile({String? name, String? about}) async {
-    final Map<String, dynamic> data = {};
-    if (name != null) data['name'] = name;
-    if (about != null) data['about'] = about;
-    
-    await _firestore.collection('users').doc(currentUid).update(data);
+    await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (about != null) 'about': about,
+      }),
+    );
   }
 
   // Update Profile Photo
-  Future<String> updateProfilePhoto(File imageFile) async {
+  Future<String> updateProfilePhoto(dynamic imageFile) async {
     try {
-      final ref = _storage.ref().child('profile_photos/$currentUid.jpg');
-      await ref.putFile(imageFile);
-      final url = await ref.getDownloadURL();
+      final uploadService = MediaUploadService();
+      final url = await uploadService.uploadAvatar(imageFile);
       
-      await _firestore.collection('users').doc(currentUid).update({
-        'profilePhotoUrl': url,
-      });
+      // Backend automatically updates the user document in MongoDB.
+      // The stream will pick up the change on next poll.
       
       return url;
     } catch (e) {
@@ -46,27 +74,26 @@ class UserService {
     }
   }
 
-  // Update Privacy Settings
+  // Update Privacy Settings (Stub - requires backend endpoint)
   Future<void> updatePrivacySettings({
     int? lastSeenVisibility,
     int? profilePhotoVisibility,
     int? aboutVisibility,
     bool? readReceipts,
   }) async {
-    final Map<String, dynamic> data = {};
-    if (lastSeenVisibility != null) data['lastSeenVisibility'] = lastSeenVisibility;
-    if (profilePhotoVisibility != null) data['profilePhotoVisibility'] = profilePhotoVisibility;
-    if (aboutVisibility != null) data['aboutVisibility'] = aboutVisibility;
-    if (readReceipts != null) data['readReceipts'] = readReceipts;
-
-    await _firestore.collection('users').doc(currentUid).update(data);
+    // TODO: Implement backend endpoint
   }
 
   // Set Online Status
   Future<void> setOnlineStatus(bool isOnline) async {
-    await _firestore.collection('users').doc(currentUid).update({
-      'isOnline': isOnline,
-      'lastSeen': FieldValue.serverTimestamp(),
-    });
+     try {
+       await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'isOnline': isOnline}),
+      );
+     } catch (e) {
+       print('Online status error: $e');
+     }
   }
 }

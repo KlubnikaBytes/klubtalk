@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/models/contact.dart' as app_contact;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'package:whatsapp_clone/config/api_config.dart';
 
 class ContactService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Check Current Permission Status
   Future<PermissionStatus> getPermissionStatus() async {
@@ -25,21 +28,68 @@ class ContactService {
     return [];
   }
 
-  // Stream of ALL Registered Users (For Matching)
-  // Note: For a real app with millions of users, we'd hash contacts and use Cloud Functions.
-  // For a clone/prototype, fetching 'users' collection is standard and performant enough.
-  Stream<List<UserModel>> getRegisteredUsersStream() {
-    return _firestore.collection('users').snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) => UserModel.fromMap(doc.data(), doc.id)).toList();
-    });
+  // Fetch ALL Registered Users via API
+  Future<List<UserModel>> getRegisteredUsers() async {
+     try {
+       final token = await _auth.currentUser?.getIdToken();
+       if (token == null) return [];
+
+       final response = await http.get(
+         Uri.parse('${ApiConfig.baseUrl}/users'),
+         headers: {
+           'Authorization': 'Bearer $token',
+         }
+       );
+
+       if (response.statusCode == 200) {
+         final List<dynamic> data = jsonDecode(response.body);
+         return data.map((item) => UserModel.fromMap(item, item['firebaseUid'] ?? '')).toList();
+       }
+       return [];
+     } catch (e) {
+       print('Error fetching users: $e');
+       return [];
+     }
+  }
+
+  // Add Contact via API
+  Future<void> addContact(String name, String phone) async {
+    final token = await _auth.currentUser?.getIdToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    final url = Uri.parse('${ApiConfig.baseUrl}/contacts/add');
+    print('POST Request to: $url');
+    print('Body: ${jsonEncode({'name': name, 'phone': phone})}');
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'name': name,
+        'phone': phone,
+      }),
+    );
+    
+    print('Response Status: ${response.statusCode}');
+    print('Response Body: ${response.body}');
+
+    if (response.statusCode != 200) {
+      if (response.headers['content-type']?.contains('application/json') ?? false) {
+          final err = jsonDecode(response.body);
+          throw Exception(err['error'] ?? 'Failed to add contact');
+      } else {
+         throw Exception('Server Error (${response.statusCode}): ${response.body}');
+      }
+    }
   }
 
   // Normalize Phone Number helper
   String normalizePhoneNumber(String phone) {
     // Remove spaces, dashes, parentheses
     String cleaned = phone.replaceAll(RegExp(r'[\s-\(\)]'), '');
-    // Ensure it starts with +, if local, might need Country Code (Assuming IN +91 for now or leaving as is)
-    // Detailed normalization requires `libphonenumber` package, for this clone we'll do basic cleaning.
     return cleaned;
   }
 }

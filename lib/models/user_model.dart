@@ -33,14 +33,23 @@ class UserModel {
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String uid) {
+    // Handle lastSeen as Timestamp (Firestore) or String (Backend JSON)
+    Timestamp? lastSeenVal;
+    final lastSeenRaw = map['lastSeen'];
+    if (lastSeenRaw is Timestamp) {
+      lastSeenVal = lastSeenRaw;
+    } else if (lastSeenRaw is String) {
+      lastSeenVal = Timestamp.fromDate(DateTime.parse(lastSeenRaw));
+    }
+    
     return UserModel(
       uid: uid,
-      phoneNumber: map['phoneNumber'] ?? '',
+      phoneNumber: map['phone'] ?? map['phoneNumber'] ?? '', // Handle both backend 'phone' and old 'phoneNumber'
       name: map['name'] ?? '',
       about: map['about'] ?? 'Hey there! I am using WhatsApp.',
-      profilePhotoUrl: map['profilePhotoUrl'] ?? '',
+      profilePhotoUrl: map['avatar'] ?? map['profilePhotoUrl'] ?? '',
       isOnline: map['isOnline'] ?? false,
-      lastSeen: map['lastSeen'],
+      lastSeen: lastSeenVal,
       lastSeenVisibility: map['lastSeenVisibility'] ?? 0,
       profilePhotoVisibility: map['profilePhotoVisibility'] ?? 0,
       aboutVisibility: map['aboutVisibility'] ?? 0,

@@ -1,18 +1,55 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
+const User = require('../models/User');
 
 dotenv.config();
+
+// Ensure directories exist
+const ensureDir = (dir) => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+};
 
 // Configure Multer for Disk Storage (Hybrid Backend)
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        let dest = 'uploads/';
+        // Use fieldname as primary indicator for robustness
+        if (file.fieldname === 'avatar') {
+            dest = 'uploads/avatars/';
+        } else if (file.fieldname === 'voice') {
+            dest = 'uploads/voice/';
+        } else if (file.fieldname === 'image') {
+            dest = 'uploads/images/';
+        } else {
+            // Fallbacks based on path/mimetype
+            if (req.path.includes('/avatar')) dest = 'uploads/avatars/';
+            else if (req.path.includes('/voice') || file.mimetype.startsWith('audio')) dest = 'uploads/voice/';
+            else if (req.path.includes('/image') || file.mimetype.startsWith('image')) dest = 'uploads/images/';
+        }
+        ensureDir(dest);
+        cb(null, dest);
     },
     filename: (req, file, cb) => {
-        // Unique filename: timestamp + random + extension
+        // Robust extension handling
+        let ext = path.extname(file.originalname);
+
+        // If extension is missing, infer from mimetype
+        if (!ext || ext === '.') {
+            if (file.mimetype === 'audio/mpeg') ext = '.mp3';
+            else if (file.mimetype === 'audio/mp4' || file.mimetype === 'audio/x-m4a') ext = '.m4a';
+            else if (file.mimetype === 'audio/aac') ext = '.aac';
+            else if (file.mimetype === 'audio/wav') ext = '.wav';
+            else if (file.mimetype.startsWith('audio/')) ext = '.mp3'; // Fallback for voice
+            else if (file.mimetype === 'image/jpeg') ext = '.jpg';
+            else if (file.mimetype === 'image/png') ext = '.png';
+        }
+
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
+        cb(null, uniqueSuffix + ext);
     }
 });
 
@@ -21,44 +58,77 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
 
-// Upload Audio
-const uploadAudio = (req, res) => {
+// Upload Voice/Audio
+const uploadVoice = (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Construct Public URL
-    // On a real VPS, use the actual domain. Locally, use localhost.
-    const baseUrl = process.env.VPS_PUBLIC_URL || 'http://localhost:3000';
-    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    // Store relative path (e.g., /uploads/voice/filename.mp3)
+    const filePath = `/uploads/voice/${req.file.filename}`;
 
-    // Return the URL for the client to save to Firestore
     return res.status(200).json({
-        message: 'Audio uploaded successfully',
-        url: fileUrl,
+        message: 'Voice uploaded successfully',
+        url: filePath,
         filename: req.file.filename,
         mimetype: req.file.mimetype
     });
 };
 
-// Upload Generic Media
-const uploadMedia = (req, res) => {
+// Upload Avatar (Profile Picture)
+const uploadAvatar = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No avatar uploaded' });
+    }
+
+    try {
+        // Store relative path (e.g., /uploads/avatars/filename.jpg)
+        const filePath = `/uploads/avatars/${req.file.filename}`;
+        const firebaseUid = req.user.uid;
+
+        // Update User in MongoDB by firebaseUid
+        const updatedUser = await User.findOneAndUpdate(
+            { firebaseUid: firebaseUid },
+            {
+                $set: { avatar: filePath },
+                $setOnInsert: {
+                    phone: req.user.phone_number || 'UNKNOWN_PHONE',
+                    createdAt: new Date()
+                }
+            },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        return res.status(200).json({
+            message: 'Profile photo updated successfully',
+            url: filePath,
+            user: updatedUser
+        });
+    } catch (error) {
+        console.error('Avatar upload error:', error);
+        return res.status(500).json({ error: 'Failed to update profile photo' });
+    }
+};
+
+// Upload Chat Image
+const uploadImage = (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const baseUrl = process.env.VPS_PUBLIC_URL || 'http://localhost:3000';
-    const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    // Store relative path (e.g., /uploads/images/filename.jpg)
+    const filePath = `/uploads/images/${req.file.filename}`;
 
     return res.status(200).json({
-        message: 'Media uploaded successfully',
-        url: fileUrl,
-        type: req.body.type || 'media'
+        message: 'Image uploaded successfully',
+        url: filePath,
+        type: 'image'
     });
 };
 
 module.exports = {
     upload,
-    uploadAudio,
-    uploadMedia
+    uploadVoice,
+    uploadAvatar,
+    uploadImage
 };

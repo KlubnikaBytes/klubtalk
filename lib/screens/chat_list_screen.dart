@@ -1,8 +1,6 @@
-import 'dart:ui';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/gestures.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart';
 import 'package:whatsapp_clone/screens/new_chat_screen.dart';
@@ -11,6 +9,8 @@ import 'package:whatsapp_clone/screens/settings/settings_screen.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:whatsapp_clone/utils/chat_session_store.dart';
+import 'package:whatsapp_clone/utils/platform_helper.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -49,6 +49,16 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
               } else if (value == 'New group') {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen()));
+              } else if (value == 'Archived') {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(
+                    builder: (context) => Scaffold(
+                      appBar: AppBar(title: const Text("Archived")),
+                      body: ChatListScreen(isWeb: widget.isWeb, filter: 'archived', onChatSelected: widget.onChatSelected)
+                    )
+                  )
+                );
               }
             },
             itemBuilder: (context) => [
@@ -110,9 +120,9 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   }
 }
 
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   final bool isWeb;
-  final String filter;
+  final String filter; // 'all', 'unread', 'favorites', 'archived'
   final Function(Contact, String, String)? onChatSelected;
 
   const ChatListScreen({
@@ -123,278 +133,409 @@ class ChatListScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    
-    // Stream of Metadata
-    Stream<QuerySnapshot> metaStream = FirebaseFirestore.instance 
-      .collection('users')
-      .doc(currentUid)
-      .collection('chatMeta')
-      .snapshots();
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
 
-    // Base Query (Still fetch all relevant chats)
-    Query chatsQuery = FirebaseFirestore.instance
-            .collection('chats')
-            .where('participants', arrayContains: currentUid)
-            .orderBy('lastMessageTime', descending: true);
-            
-    void _showContextMenu(BuildContext context, Offset? position, String chatId, Map<String, dynamic>? meta) {
-      final isFavorite = meta?['isFavorite'] == true;
-      final unreadCount = meta?['unreadCount'] ?? 0;
-      final isArchived = meta?['isArchived'] == true;
+class _ChatListScreenState extends State<ChatListScreen> {
+  final ChatService _chatService = ChatService();
+  final ChatSessionStore _store = ChatSessionStore();
+  
+  List<Map<String, dynamic>> _chats = [];
+  bool _isLoading = true;
+  Timer? _pollingTimer;
 
-      final items = [
-          PopupMenuItem(
-            value: 'unread',
-            child: Text(unreadCount > 0 ? 'Mark as read' : 'Mark as unread'),
-          ),
-          PopupMenuItem(
-            value: 'favorite',
-            child: Text(isFavorite ? 'Remove from favorites' : 'Add to favorites'),
-          ),
-          PopupMenuItem(
-            value: 'archive',
-            child: Text(isArchived ? 'Unarchive' : 'Archive'),
-          ),
-          const PopupMenuItem(
-            value: 'delete',
-            child: Text('Delete'),
-          ),
-      ];
+  @override
+  void initState() {
+    super.initState();
+    _loadChats();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) => _loadChats(updateLoading: false));
+  }
 
-      // Helper to handle selection
-      void onSelected(String value) {
-         final chatService = ChatService(); // Assuming we can instantiate or get standard instance
-         if (value == 'unread') {
-           if (unreadCount > 0) {
-             chatService.markChatAsRead(chatId);
-           } else {
-             chatService.markChatAsUnread(chatId);
-           }
-         } else if (value == 'favorite') {
-           chatService.toggleFavorite(chatId, !isFavorite);
-         } else if (value == 'archive') {
-           // Stub for archive
-         } else if (value == 'delete') {
-           // Stub for delete
-         }
-      }
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
 
-      if (position != null) {
-        // Desktop / Web Right Click -> Dropdown Menu at cursor
-        showMenu<String>(
-          context: context,
-          position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
-          items: items,
-        ).then((value) {
-          if (value != null) onSelected(value);
+  Future<void> _loadChats({bool updateLoading = true}) async {
+    try {
+      if (updateLoading && mounted) setState(() => _isLoading = true);
+      
+      final chats = await _chatService.getMyChats();
+      
+      if (mounted) {
+        setState(() {
+          _chats = chats;
+          _isLoading = false;
         });
-      } else {
-        // Mobile Long Press -> Bottom Sheet
-        showModalBottomSheet(
-          context: context,
-          builder: (context) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: items.map((item) {
-                return ListTile(
-                  title: item.child,
-                  onTap: () {
-                    Navigator.pop(context);
-                    onSelected(item.value as String);
-                  },
-                );
-              }).toList(),
+      }
+    } catch (e) {
+      if (mounted && updateLoading) setState(() => _isLoading = false);
+    }
+  }
+
+  void _handleAction(String chatId, String action, Map<String, dynamic> chatData) async {
+    switch (action) {
+      case 'archive':
+        await _chatService.toggleArchive(chatId);
+        _loadChats(updateLoading: false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat archived")));
+        break;
+      case 'unarchive':
+         await _chatService.toggleArchive(chatId);
+         _loadChats(updateLoading: false);
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat unarchived")));
+         break;
+      case 'mute':
+        _store.muteChat(chatId);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Notifications muted")));
+        break;
+      case 'unmute':
+        _store.unmuteChat(chatId);
+        break;
+      case 'favorite':
+        await _chatService.toggleFavorite(chatId); 
+        _loadChats(updateLoading: false);
+        break;
+      case 'mark_unread':
+        _store.markUnread(chatId);
+        break;
+      case 'mark_read':
+        _store.markRead(chatId);
+        break;
+      case 'delete':
+        _store.deleteChat(chatId);
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat deleted")));
+        break;
+       case 'exit_group':
+        _store.deleteChat(chatId);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Exited group")));
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    // Listen to store changes to trigger rebuilds
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _store.archivedChatIds,
+        _store.mutedChatIds,
+        _store.markedUnreadChatIds,
+        _store.deletedChatIds
+      ]),
+      builder: (context, child) {
+        
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+        
+        // 1. Filter Logic
+        final docs = _chats.where((chatData) {
+           final chatId = chatData['_id'] ?? chatData['id'];
+           if (_store.isDeleted(chatId)) return false;
+
+           final isArchivedLocal = _store.isArchived(chatId);
+           final isArchivedServer = (chatData['isArchivedSelf'] as bool? ?? false);
+           // PRIORITIZE SERVER: If server says archived, it is archived. 
+           // If local says archived (legacy/offline), we can respect it OR drop it.
+           // Since we are enforcing backend persistence, we should rely on server state from _loadChats.
+           // However, to keep UI snappy, we reload chats after action.
+           final isArchived = isArchivedServer; 
+
+           // ARCHIVED TAB: Show ONLY archived
+           if (widget.filter == 'archived') {
+             return isArchived;
+           }
+
+           // OTHER TABS: Show ONLY NON-archived
+           if (isArchived) return false;
+
+           final isFavorite = (chatData['isFavoriteSelf'] as bool?) ?? false;
+           
+           var unreadCount = (chatData['unreadCountSelf'] as num?)?.toInt() ?? 0;
+           if (_store.isMarkedUnread(chatId)) unreadCount = 1; 
+           // If manually marked "read" but backend says unread? 
+           // We can track markRead in store too if needed, but for now markUnread is priority.
+           
+           if (widget.filter == 'unread') {
+             if (unreadCount == 0 && !_store.isMarkedUnread(chatId)) return false;
+           }
+
+           if (widget.filter == 'favorites' && !isFavorite) return false;
+           
+           return true;
+        }).toList();
+
+        // 2. Count Archived for "Archived Row"
+        int archivedCount = 0;
+        if (widget.filter == 'all') {
+             // We need to count how many archived chats exist totally
+             archivedCount = _chats.where((c) {
+                 final cid = c['_id'] ?? c['id'];
+                 return !_store.isDeleted(cid) && (c['isArchivedSelf'] as bool? ?? false);
+             }).length;
+        }
+
+        /* 
+           If No Chats:
+           But if we have archived chats and we are in 'All', we should still show the Archived Row even if docs (main chats) is empty?
+           Yes. The Archived Row is item 0.
+        */
+        if (docs.isEmpty && archivedCount == 0 && widget.filter != 'archived') {
+          return Center(
+            child: Text(
+              widget.filter == 'all' ? 'No chats' : 'No ${widget.filter} chats', 
+              style: const TextStyle(color: Colors.grey)
+          ));
+        }
+        
+        // 3. ListView
+        return ListView.builder(
+          itemCount: docs.length + (archivedCount > 0 && widget.filter == 'all' ? 1 : 0),
+          itemBuilder: (context, index) {
+            
+            // Render Archived Row at Top (Only in 'All' tab)
+            if (widget.filter == 'all' && archivedCount > 0 && index == 0) {
+               return ListTile(
+                 leading: const Padding(
+                   padding: EdgeInsets.only(left: 8.0),
+                   child: Icon(Icons.archive_outlined, color: Color(0xFF075E54)),
+                 ),
+                 title: const Text("Archived", style: TextStyle(fontWeight: FontWeight.bold)),
+                 trailing: Text("$archivedCount", style: const TextStyle(color: Color(0xFF075E54))),
+                 onTap: () {
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(
+                        builder: (context) => Scaffold(
+                          appBar: AppBar(title: const Text("Archived")),
+                          body: ChatListScreen(isWeb: widget.isWeb, filter: 'archived', onChatSelected: widget.onChatSelected)
+                        )
+                      )
+                    );
+                 },
+               );
+            }
+
+            final chatIndex = (widget.filter == 'all' && archivedCount > 0) ? index - 1 : index;
+            final chatData = docs[chatIndex];
+            final chatId = chatData['_id'] ?? chatData['id'];
+            
+            final participants = List<String>.from(chatData['participants'] ?? []);
+            final participantsDetails = List<Map<String, dynamic>>.from(chatData['participantsDetails'] ?? []);
+            
+            final isFavorite = (chatData['isFavoriteSelf'] as bool?) ?? false;
+            bool isMuted = false;
+            if (chatData['muteUntil'] is Map && currentUid != null) {
+                final untilVal = chatData['muteUntil'][currentUid];
+                if (untilVal == 'permanent') {
+                   isMuted = true;
+                } else if (untilVal is String) {
+                   final date = DateTime.tryParse(untilVal);
+                   if (date != null && date.isAfter(DateTime.now())) {
+                      isMuted = true;
+                   }
+                }
+            }
+            
+            var unreadCount = (chatData['unreadCountSelf'] as num?)?.toInt() ?? 0;
+            if (_store.isMarkedUnread(chatId)) unreadCount = unreadCount > 0 ? unreadCount : 1;
+            
+            // Determine Archive State for Menu
+            final isArchived = widget.filter == 'archived' || (chatData['isArchivedSelf'] as bool? ?? false); 
+
+            final isGroup = chatData['isGroup'] == true;
+            
+            // Name/Avatar Logic
+            String name = '', avatarUrl = '', lastMsgText = '';
+            if (isGroup) {
+                 name = chatData['groupName'] ?? 'Group';
+                 avatarUrl = '';
+            } else {
+                 final peerId = participants.firstWhere((id) => id != currentUid, orElse: () => 'Unknown');
+                 final peerData = participantsDetails.firstWhere((u) => u['firebaseUid'] == peerId, orElse: () => {});
+                 name = peerData['name'] ?? 'Unknown';
+                 avatarUrl = peerData['avatar'] ?? '';
+                 if (avatarUrl.isEmpty) avatarUrl = 'https://ui-avatars.com/api/?name=$name';
+            }
+
+            if (chatData['lastMessage'] is Map) {
+                final lm = chatData['lastMessage'];
+                lastMsgText = lm['text'] ?? '';
+                if (lastMsgText.isEmpty) {
+                     if (lm['type'] == 'image') lastMsgText = '📷 Photo';
+                     if (lm['type'] == 'voice') lastMsgText = '🎙️ Voice message';
+                }
+            } else if (chatData['lastMessage'] is String) lastMsgText = chatData['lastMessage'];
+            
+            // Time
+            String timeStr = '';
+            if (chatData['lastMessageTime'] != null) {
+                try { timeStr = DateFormat('h:mm a').format(DateTime.parse(chatData['lastMessageTime']).toLocal()); } catch (_) {}
+            }
+
+            // ... (Inside ListView.builder) ...
+            
+            return GestureDetector(
+               onLongPress: PlatformHelper.isMobile 
+                  ? () => _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived)
+                  : null,
+               onSecondaryTapUp: (details) {
+                   if (PlatformHelper.isWeb) {
+                      _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived, position: details.globalPosition);
+                   }
+               },
+               child: ListTile(
+                   // ... (Keep existing ListTile details: leading, title, subtitle, trailing, onTap)
+                   leading: AvatarWidget(imageUrl: avatarUrl, radius: 25),
+                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                   subtitle: Row(
+                      children: [
+                        if (isMuted) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.volume_off, size: 14, color: Colors.grey)),
+                        Expanded(child: Text(lastMsgText, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ],
+                   ),
+                   trailing: Column(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     crossAxisAlignment: CrossAxisAlignment.end,
+                     children: [
+                       Text(timeStr, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey)),
+                       const SizedBox(height: 4),
+                       Row(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           if (isFavorite) const Icon(Icons.star, size: 14, color: Colors.grey),
+                           if (unreadCount > 0) ...[
+                             const SizedBox(width: 4),
+                             Container(
+                               padding: const EdgeInsets.all(6),
+                               decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
+                               child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                             )
+                           ]
+                         ],
+                       )
+                     ],
+                   ),
+                   onTap: () {
+                      if (unreadCount > 0) _store.markRead(chatId);
+                      final contact = Contact(name: name, profileImage: avatarUrl, isOnline: true);
+                      final peerId = !isGroup ? participants.firstWhere((id) => id != currentUid, orElse: () => '') : '';
+                      _navigateToChat(context, contact, peerId, chatId, isGroup: isGroup);
+                   },
+                 ),
             );
-          }
+          },
         );
       }
-    }
+    );
+  }
 
-    return StreamBuilder<QuerySnapshot>(
-        stream: metaStream,
-        builder: (context, metaSnapshot) {
-          if (metaSnapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          
-          Map<String, Map<String, dynamic>> metaMap = {};
-          for (var doc in metaSnapshot.data?.docs ?? []) {
-             metaMap[doc.id] = doc.data() as Map<String, dynamic>;
-          }
+  // Unified Menu Logic
+  void _showChatMenu(BuildContext context, String chatId, Map<String, dynamic> chatData, bool isGroup, bool isFavorite, bool isUnread, bool isArchived, {Offset? position}) {
+      final items = _buildMenuItems(isGroup, isFavorite, isUnread, isArchived, widget.filter);
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: chatsQuery.snapshots(),
-            builder: (context, chatSnapshot) {
-               if (chatSnapshot.connectionState == ConnectionState.waiting) return const SizedBox.shrink();
-               
-               final allDocs = chatSnapshot.data?.docs ?? [];
-               
-               final docs = allDocs.where((doc) {
-                 final chatId = doc.id;
-                 final meta = metaMap[chatId];
-                 final isUnread = (meta?['unreadCount'] ?? 0) > 0;
-                 final isFavorite = meta?['isFavorite'] == true;
-
-                 if (filter == 'unread' && !isUnread) return false;
-                 if (filter == 'favorites' && !isFavorite) return false;
-                 
-                 return true;
-               }).toList();
-
-               if (docs.isEmpty) {
-                 return Center(
-                   child: Text(
-                     filter == 'all' ? 'No chats yet' : 'No $filter chats', 
-                     style: const TextStyle(color: Colors.grey)
-                 ));
-               }
-
-               return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final chatData = docs[index].data() as Map<String, dynamic>;
-              final chatId = docs[index].id;
-              final participants = List<String>.from(chatData['participants'] ?? []);
-              
-              final meta = metaMap[chatId];
-              final unreadCount = meta?['unreadCount'] ?? 0;
-              final isFavorite = meta?['isFavorite'] == true;
-
-              final isGroup = chatData['isGroup'] == true;
-              
-              Widget trailingWidget(String time) {
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(time, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey)),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isFavorite) const Icon(Icons.star, size: 14, color: Colors.grey),
-                        if (unreadCount > 0) ...[
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF25D366),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              '$unreadCount',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ]
-                      ],
-                    ),
-                  ],
-                );
-              }
-
-              if (isGroup) {
-                 final groupName = chatData['groupName'] ?? 'Unknown Group';
-                 final lastMsg = chatData['lastMessage'] ?? '';
-                 String time = '';
-                 if (chatData['lastMessageTime'] != null) {
-                    Timestamp t = chatData['lastMessageTime'];
-                    time = DateFormat('h:mm a').format(t.toDate());
-                 }
-
-                 return Listener(
-                   onPointerDown: (event) {
-                     if (event.kind == PointerDeviceKind.mouse && event.buttons == kSecondaryMouseButton) {
-                       _showContextMenu(context, event.position, chatId, meta);
-                     }
+      if (PlatformHelper.isMobile) {
+          showModalBottomSheet(
+            context: context,
+            builder: (context) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: items.map((item) {
+                 return ListTile(
+                   leading: Icon(item['icon'] as IconData, color: item['isDestructive'] == true ? Colors.red : null),
+                   title: Text(item['label'] as String, style: TextStyle(color: item['isDestructive'] == true ? Colors.red : null)),
+                   onTap: () {
+                      Navigator.pop(context);
+                      _handleAction(chatId, item['value'] as String, chatData);
                    },
-                   child: ListTile(
-                      leading: const CircleAvatar(
-                        radius: 25,
-                        backgroundColor: Colors.grey,
-                        child: Icon(Icons.groups, color: Colors.white),
-                      ),
-                      title: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: trailingWidget(time),
-                      onTap: () {
-                        final contact = Contact(
-                          name: groupName,
-                          profileImage: '',
-                          isOnline: false,
-                        );
-                        _navigateToChat(context, contact, 'group', chatId, isGroup: true);
-                      },
-                      onLongPress: () => _showContextMenu(context, null, chatId, meta),
-                   ),
                  );
-              }
-
-              final peerId = participants.firstWhere((id) => id != currentUid, orElse: () => 'Unknown');
-              
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance.collection('users').doc(peerId).get(),
-                builder: (context, userSnap) {
-                  if (!userSnap.hasData) return const SizedBox.shrink();
-                  
-                  final userData = userSnap.data!.data() as Map<String, dynamic>?;
-                  final name = userData?['name'] ?? 'Unknown User';
-                  final avatar = userData?['profilePhotoUrl'] ?? 'https://i.pravatar.cc/150?u=$peerId';
-                  
-                  final lastMsg = chatData['lastMessage'] ?? '';
-                  String time = '';
-                  if (chatData['lastMessageTime'] != null) {
-                    Timestamp t = chatData['lastMessageTime'];
-                    time = DateFormat('h:mm a').format(t.toDate());
-                  }
-
-                  return Listener(
-                    onPointerDown: (event) {
-                       if (event.kind == PointerDeviceKind.mouse && event.buttons == kSecondaryMouseButton) {
-                         _showContextMenu(context, event.position, chatId, meta);
-                       }
-                    },
-                    child: ListTile(
-                      leading: AvatarWidget(imageUrl: avatar, radius: 25),
-                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(lastMsg, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: trailingWidget(time),
-                      onTap: () {
-                        final contact = Contact(
-                          name: name,
-                          profileImage: avatar,
-                          isOnline: true,
-                        );
-                        _navigateToChat(context, contact, peerId, chatId);
-                      },
-                      onLongPress: () => _showContextMenu(context, null, chatId, meta),
-                    ),
-                  );
-                },
-              );
-            },
+              }).toList(),
+            ),
           );
-            },
-          );
-        },
+      } else {
+         // Desktop / Web Context Menu
+         final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+         showMenu(
+           context: context,
+           position: RelativeRect.fromRect(
+             (position ?? Offset.zero) & const Size(0, 0),
+             Offset.zero & overlay.size,
+           ),
+           items: items.map((item) => PopupMenuItem(
+             value: item['value'],
+             child: Text(item['label'] as String, style: TextStyle(color: item['isDestructive'] == true ? Colors.red : null)),
+           )).toList(),
+         ).then((value) {
+            if (value != null) _handleAction(chatId, value as String, chatData);
+         });
+      }
+  }
+
+  List<Map<String, dynamic>> _buildMenuItems(bool isGroup, bool isFavorite, bool isUnread, bool isArchived, String contextFilter) {
+      final List<Map<String, dynamic>> items = [];
+
+      // Context-Specific Rules
+      // Unread Tab: Mark Read, Archive
+      if (contextFilter == 'unread') {
+         items.add({'label': 'Mark as read', 'value': 'mark_read', 'icon': Icons.mark_chat_read});
+         items.add({'label': 'Archive chat', 'value': 'archive', 'icon': Icons.archive});
+         return items;
+      }
+      
+      // Archived Tab: Unarchive, Mark Unread/Read, Mute, Delete
+      if (contextFilter == 'archived') {
+         items.add({'label': 'Unarchive chat', 'value': 'unarchive', 'icon': Icons.unarchive});
+         items.add(isUnread 
+            ? {'label': 'Mark as read', 'value': 'mark_read', 'icon': Icons.mark_chat_read}
+            : {'label': 'Mark as unread', 'value': 'mark_unread', 'icon': Icons.mark_chat_unread}
+         );
+         items.add({'label': 'Mute notifications', 'value': 'mute', 'icon': Icons.volume_off});
+         items.add({'label': 'Delete chat', 'value': 'delete', 'icon': Icons.delete, 'isDestructive': true});
+         return items;
+      }
+
+      // Favourites Tab: Remove Fav, Mute, Archive
+      if (contextFilter == 'favorites') {
+         items.add({'label': 'Remove from favourites', 'value': 'favorite', 'icon': Icons.star_border});
+         items.add({'label': 'Mute notifications', 'value': 'mute', 'icon': Icons.volume_off});
+         items.add({'label': 'Archive chat', 'value': 'archive', 'icon': Icons.archive});
+         return items;
+      }
+
+      // Default (All Chats)
+      // Normal Group/Chat logic
+      items.add(isUnread 
+            ? {'label': 'Mark as read', 'value': 'mark_read', 'icon': Icons.mark_chat_read}
+            : {'label': 'Mark as unread', 'value': 'mark_unread', 'icon': Icons.mark_chat_unread}
       );
+      
+      items.add(isFavorite 
+          ? {'label': 'Remove from favourites', 'value': 'favorite', 'icon': Icons.star_border}
+          : {'label': 'Add to favourites', 'value': 'favorite', 'icon': Icons.star}
+      );
+
+      items.add(isArchived 
+          ? {'label': 'Unarchive chat', 'value': 'unarchive', 'icon': Icons.unarchive}
+          : {'label': 'Archive chat', 'value': 'archive', 'icon': Icons.archive}
+      );
+
+      items.add({'label': 'Mute notifications', 'value': 'mute', 'icon': Icons.volume_off});
+
+      if (isGroup) {
+         items.add({'label': 'Exit group', 'value': 'exit_group', 'icon': Icons.exit_to_app, 'isDestructive': true});
+      } else {
+         items.add({'label': 'Delete chat', 'value': 'delete', 'icon': Icons.delete, 'isDestructive': true});
+      }
+
+      return items;
   }
 
   void _navigateToChat(BuildContext context, Contact contact, String peerId, String chatId, {bool isGroup = false}) {
-    if (isWeb && onChatSelected != null) {
-      onChatSelected!(contact, peerId, chatId);
+    if (widget.isWeb && widget.onChatSelected != null) {
+      widget.onChatSelected!(contact, peerId, chatId);
     } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatScreen(
-            contact: contact,
-            peerId: peerId,
-            chatId: chatId,
-            isGroup: isGroup,
-          ),
-        ),
-      );
+       Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(contact: contact, peerId: peerId, chatId: chatId, isGroup: isGroup)));
     }
   }
 }

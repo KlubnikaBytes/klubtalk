@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart'; // Add this input
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,7 +24,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     if (pickedFile != null) {
       setState(() => _isUploading = true);
       try {
-        await _userService.updateProfilePhoto(File(pickedFile.path));
+        if (kIsWeb) {
+          final bytes = await pickedFile.readAsBytes();
+          await _userService.updateProfilePhoto(bytes);
+        } else {
+          await _userService.updateProfilePhoto(File(pickedFile.path));
+        }
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       } finally {
