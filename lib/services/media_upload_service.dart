@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
+import 'package:mime/mime.dart';
 
 class MediaUploadService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -21,22 +22,28 @@ class MediaUploadService {
   }
 
   // Upload Voice Message
-  Future<String> uploadVoice(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, ApiConfig.uploadVoiceEndpoint, fieldName: 'voice');
+  Future<Map<String, dynamic>> uploadVoice(dynamic fileOrPath) async {
+    return _uploadFile(fileOrPath, ApiConfig.uploadVoiceEndpoint, fieldName: 'voice', mimeType: 'audio/mpeg');
   }
 
   // Upload Chat Image
-  Future<String> uploadImage(dynamic fileOrPath) async {
-    return _uploadFile(fileOrPath, ApiConfig.uploadImageEndpoint, fieldName: 'image');
+  Future<Map<String, dynamic>> uploadImage(dynamic fileOrPath, {String? mimeType}) async {
+    return _uploadFile(fileOrPath, ApiConfig.uploadImageEndpoint, fieldName: 'image', mimeType: mimeType);
   }
 
   // Upload Profile Avatar
-  Future<String> uploadAvatar(dynamic fileOrPath) async {
+  Future<Map<String, dynamic>> uploadAvatar(dynamic fileOrPath) async {
     return _uploadFile(fileOrPath, ApiConfig.uploadAvatarEndpoint, fieldName: 'avatar');
   }
 
+  // Upload Generic File (Document, Zip, etc)
+  Future<Map<String, dynamic>> uploadGenericFile(dynamic fileOrPath, {String? mimeType}) async {
+    // Reuse uploadImage endpoint as generic media handler
+    return _uploadFile(fileOrPath, ApiConfig.uploadImageEndpoint, fieldName: 'image', mimeType: mimeType); 
+  }
+
   // Core Upload Logic
-  Future<String> _uploadFile(dynamic fileOrPath, String endpoint, {String fieldName = 'file'}) async {
+  Future<Map<String, dynamic>> _uploadFile(dynamic fileOrPath, String endpoint, {String fieldName = 'file', String? mimeType}) async {
     final uri = Uri.parse(endpoint);
     final request = http.MultipartRequest('POST', uri);
     
@@ -48,7 +55,14 @@ class MediaUploadService {
       String extension = 'jpg';
       if (fieldName == 'voice') {
         extension = 'mp3'; // Default for web audio blobs
+      } else if (mimeType != null) {
+          extension = extensionFromMime(mimeType) ?? 'bin';
+          // Fix for audio/mpeg -> mp3 if needed, or video/mp4 -> mp4
+          if (extension == 'bin' && mimeType == 'video/mp4') extension = 'mp4';
+          if (extension == 'bin' && mimeType == 'image/jpeg') extension = 'jpg';
       }
+
+      print("DEBUG: Web Upload Extension for $mimeType -> .$extension");
 
       if (fileOrPath is String && (fileOrPath.startsWith('blob:') || fileOrPath.startsWith('http'))) {
         // Fetch Blob data from Blob URL
@@ -86,8 +100,12 @@ class MediaUploadService {
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        return data['url'];
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        // Ensure mime is part of the returned data so ChatService can use it
+        if (kIsWeb && mimeType != null) {
+           data['mime'] = mimeType;
+        }
+        return data; 
       } else {
         throw Exception('Upload failed: ${response.statusCode} - ${response.body}');
       }

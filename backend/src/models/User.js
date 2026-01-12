@@ -9,7 +9,9 @@ const userSchema = new mongoose.Schema({
     lastSeen: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
-    blockedUsers: [{ type: String }], // Array of firebaseUids
+    blockedUsers: [String], // Array of firebaseUids
 });
+
+userSchema.index({ name: 'text', phone: 'text' });
 
 module.exports = mongoose.model('User', userSchema);

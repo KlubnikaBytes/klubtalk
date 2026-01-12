@@ -13,6 +13,7 @@ const chatSchema = new mongoose.Schema({
     participants: [{ type: String, ref: 'User' }], // All members
     // Group Specific Fields
     isGroup: { type: Boolean, default: false },
+    isCommunityAnnouncements: { type: Boolean, default: false }, // Restrict posting to admins
     groupName: { type: String }, // 'name' in prompt
     groupPhoto: { type: String, default: '' }, // 'icon' in prompt
     admins: [{ type: String, ref: 'User' }],
@@ -33,6 +34,8 @@ const chatSchema = new mongoose.Schema({
     lastMessageTime: { type: Date, default: Date.now }, // Kept for sorting efficiency
     createdAt: { type: Date, default: Date.now },
 }, { minimize: false }); // minimize: false ensures empty objects (unreadCount) are saved
+
+chatSchema.index({ groupName: 'text' });
 
 // Virtual or Helper to ensure maps are initialized
 // Virtual or Helper to ensure maps are initialized

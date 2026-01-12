@@ -7,7 +7,8 @@ import 'package:whatsapp_clone/services/chat_service.dart'; // For Auth
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
 class GroupParticipantSelectScreen extends StatefulWidget {
-  const GroupParticipantSelectScreen({super.key});
+  final bool isCommunity;
+  const GroupParticipantSelectScreen({super.key, this.isCommunity = false});
 
   @override
   State<GroupParticipantSelectScreen> createState() => _GroupParticipantSelectScreenState();
@@ -15,7 +16,7 @@ class GroupParticipantSelectScreen extends StatefulWidget {
 
 class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScreen> {
   final ContactService _contactService = ContactService();
-  final ChatService _chatService = ChatService(); // Assuming it exposes auth or we use FirebaseAuth direct
+  final ChatService _chatService = ChatService(); // For Auth and Groups
   
   List<UserModel> _contacts = [];
   bool _isLoading = true;
@@ -29,19 +30,38 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
 
   Future<void> _fetchContacts() async {
     try {
-      final users = await _contactService.getRegisteredUsers();
+      List<UserModel> items = [];
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
+      if (widget.isCommunity) {
+         // Fetch Groups
+         final chats = await _chatService.getMyChats();
+         // Filter for groups only
+         items = chats.where((c) => c['isGroup'] == true).map((c) {
+             return UserModel(
+               uid: c['_id'] ?? c['id'],
+               name: c['groupName'] ?? 'Unknown Group',
+               phoneNumber: '',
+               isOnline: false,
+               profilePhotoUrl: c['groupPhoto'] ?? '',
+               about: '${(c['participants'] as List?)?.length ?? 0} members'
+             );
+         }).toList();
+      } else {
+         // Fetch Contacts
+         final users = await _contactService.getRegisteredUsers();
+         items = users.where((u) => u.uid != currentUid).toList();
+      }
       
       if (mounted) {
         setState(() {
-          // Filter out self
-          _contacts = users.where((u) => u.uid != currentUid).toList();
+          _contacts = items;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
-      print("Error loading contacts: $e");
+      print("Error loading items: $e");
     }
   }
 
@@ -61,6 +81,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
       MaterialPageRoute(
         builder: (context) => GroupInfoScreen(
           selectedParticipantIds: _selectedIds.toList(),
+          isCommunity: widget.isCommunity,
         ),
       ),
     );
@@ -75,8 +96,8 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('New Group', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            Text('${_selectedIds.length} selected', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text(widget.isCommunity ? 'Add groups' : 'New Group', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(widget.isCommunity ? 'Select groups to add' : '${_selectedIds.length} selected', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
           ],
         ),
         actions: [

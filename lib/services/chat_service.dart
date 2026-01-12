@@ -48,8 +48,13 @@ class ChatService {
   Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds) async {
     try {
       final uploadService = MediaUploadService();
-      final url = await uploadService.uploadVoice(fileOrPath);
-      await _sendMessageToBackend(chatId, url, 'voice', duration: durationSeconds);
+      final mediaData = await uploadService.uploadVoice(fileOrPath);
+      await _sendMessageToBackend(chatId, mediaData['url'], 'voice', 
+        duration: durationSeconds,
+        previewUrl: mediaData['previewUrl'],
+        originalUrl: mediaData['originalUrl'],
+        mime: mediaData['mime']
+      );
     } catch (e) {
       print('Voice Send Error: $e');
       rethrow;
@@ -57,19 +62,76 @@ class ChatService {
   }
 
   // Send Image Message
-  Future<void> sendImageMessage(String chatId, dynamic fileOrPath) async {
+  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType}) async {
     try {
       final uploadService = MediaUploadService();
-      final url = await uploadService.uploadImage(fileOrPath);
-      await _sendMessageToBackend(chatId, url, 'image');
+      final mediaData = await uploadService.uploadImage(fileOrPath, mimeType: mimeType);
+      await _sendMessageToBackend(chatId, mediaData['url'], 'image',
+        previewUrl: mediaData['previewUrl'],
+        originalUrl: mediaData['originalUrl'],
+        mime: mediaData['mime'] // Use backend returned mime, or fall back to what we sent? Backend usually detects. But on Web we need extension for backend to detect.
+      );
     } catch (e) {
       print('Image Send Error: $e');
       rethrow;
     }
   }
 
+  // Send Video Message
+  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType}) async {
+    try {
+      final uploadService = MediaUploadService();
+      // Reuse uploadImage/Generic for now as backend handles generic media uploads
+      final mediaData = await uploadService.uploadGenericFile(fileOrPath, mimeType: mimeType);
+      await _sendMessageToBackend(chatId, mediaData['url'], 'video',
+        previewUrl: mediaData['previewUrl'],
+        originalUrl: mediaData['originalUrl'],
+        mime: mediaData['mime']
+      );
+    } catch (e) {
+      print('Video Send Error: $e');
+      rethrow;
+    }
+  }
+
+  // Send File Message
+  Future<void> sendFileMessage(String chatId, dynamic fileOrPath) async {
+    try {
+      final uploadService = MediaUploadService();
+      final mediaData = await uploadService.uploadGenericFile(fileOrPath);
+      // Backend derived type might be 'image'/'video'/'file'/'audio'.
+      // But for "File Picker" flow, usage dictates it's a file attachment usually.
+      // If backend says 'image', should we override to 'file'?
+      // Prompt says: "If message.type == 'file' -> show document card".
+      // If I pick an image via pin, it should show as document card.
+      // So I must force type 'file' regardless of what backend thinks (backend 'type' return is informational mostly or DB storage).
+      // If I send 'type': 'file' to _sendMessageToBackend, it will store 'file' in DB 'type' field (controller uses req.body.type).
+      
+      await _sendMessageToBackend(chatId, mediaData['url'], 'file',
+        previewUrl: mediaData['previewUrl'],
+        originalUrl: mediaData['originalUrl'],
+        mime: mediaData['mime'],
+        filename: mediaData['filename'],
+        size: mediaData['size']
+      );
+    } catch (e) {
+      print('File Send Error: $e');
+      rethrow;
+    }
+  }
+
   // Helper: Post Message to Backend
-  Future<void> _sendMessageToBackend(String chatId, String content, String type, {int? duration}) async {
+  Future<void> _sendMessageToBackend(
+    String chatId, 
+    String content, 
+    String type, {
+    int? duration, 
+    String? previewUrl, 
+    String? originalUrl, 
+    String? mime,
+    String? filename,
+    int? size
+  }) async {
     try {
       final response = await http.post(
         Uri.parse(ApiConfig.messagesEndpoint),
@@ -79,6 +141,11 @@ class ChatService {
           'content': content,
           'type': type,
           if (duration != null) 'duration': duration,
+          if (previewUrl != null) 'previewUrl': previewUrl,
+          if (originalUrl != null) 'originalUrl': originalUrl,
+          if (mime != null) 'mime': mime,
+          if (filename != null) 'filename': filename,
+          if (size != null) 'size': size,
         }),
       );
 
@@ -120,13 +187,14 @@ class ChatService {
   }
 
   // Create Group Chat
-  Future<String> createGroupChat(String groupName, List<String> participantUids) async {
+  Future<String> createGroupChat(String groupName, List<String> participantUids, {String? groupPhotoUrl}) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.chatsEndpoint}/group'),
       headers: await _getHeaders(),
       body: jsonEncode({
         'groupName': groupName,
         'participants': participantUids,
+        'groupPhoto': groupPhotoUrl,
       }),
     );
 
@@ -135,6 +203,26 @@ class ChatService {
       return data['chatId'];
     } else {
       throw Exception('Failed to create group: ${response.body}');
+    }
+  }
+
+  // Create Community
+  Future<Map<String, dynamic>> createCommunity(String name, String description, List<String> groupIds, {String? iconUrl}) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.chatsEndpoint}/community'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'description': description,
+        'groupIds': groupIds,
+        'icon': iconUrl
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to create community: ${response.body}');
     }
   }
 
@@ -148,6 +236,20 @@ class ChatService {
   Future<void> markChatAsUnread(String chatId) async {
      // TODO: Implement backend endpoint for this
     print('markChatAsUnread not implemented yet for Hybrid Backend');
+  }
+
+  // Get Community
+  Future<Map<String, dynamic>> getCommunity(String communityId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/communities/$communityId'),
+      headers: await _getHeaders(),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load community');
+    }
   }
 
   Future<void> toggleFavorite(String chatId) async {
@@ -221,31 +323,33 @@ class ChatService {
 
   Future<void> blockUser(String userId) async {
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/users/block'),
+      Uri.parse('${ApiConfig.baseUrl}/block-user'),
       headers: await _getHeaders(),
-      body: jsonEncode({'targetUserId': userId}),
+      body: jsonEncode({'blocked_id': userId}),
     );
     if (response.statusCode != 200) throw Exception('Failed to block user');
   }
 
   Future<void> unblockUser(String userId) async {
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/users/unblock'),
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/block-user'),
       headers: await _getHeaders(),
-      body: jsonEncode({'targetUserId': userId}),
+      body: jsonEncode({'blocked_id': userId}),
     );
     if (response.statusCode != 200) throw Exception('Failed to unblock user');
   }
 
   Future<List<String>> getBlockedUsers() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return [];
+
     final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+      Uri.parse('${ApiConfig.baseUrl}/blocked-users/${currentUser.uid}'),
       headers: await _getHeaders(),
     );
     
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final list = data['blockedUsers'];
+      final list = jsonDecode(response.body);
       if (list != null && list is List) {
          return List<String>.from(list);
       }

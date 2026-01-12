@@ -33,6 +33,8 @@ router.post('/seed/users', seedUsers);
 // --- CHAT ROUTES ---
 router.post('/chats/private', verifyToken, chatController.createPrivateChat);
 router.post('/chats/group', verifyToken, chatController.createGroupChat);
+router.post('/chats/community', verifyToken, chatController.createCommunity);
+router.get('/communities/:communityId', verifyToken, chatController.getCommunity);
 router.get('/chats', verifyToken, chatController.getMyChats);
 router.post('/chats/favorite', verifyToken, chatController.toggleFavorite);
 router.post('/chats/archive', verifyToken, chatController.toggleArchive);
@@ -40,6 +42,13 @@ router.post('/chats/mute', verifyToken, chatController.muteChat);
 router.post('/chats/disappearing', verifyToken, chatController.setDisappearingTimer);
 router.post('/chats/wallpaper', verifyToken, chatController.setChatTheme);
 router.post('/chats/report', verifyToken, chatController.reportChat);
+
+// New Block Routes per architecture
+router.post('/block-user', verifyToken, chatController.blockUser);
+router.delete('/block-user', verifyToken, chatController.unblockUser);
+router.get('/blocked-users/:userId', verifyToken, chatController.getBlockedUsers);
+
+// Backwards compatibility / existing frontend calls (mapped to new controllers)
 router.post('/users/block', verifyToken, chatController.blockUser);
 router.post('/users/unblock', verifyToken, chatController.unblockUser);
 
@@ -48,5 +57,11 @@ router.get('/messages/:chatId', verifyToken, chatController.getMessages);
 
 // --- HEALTH CHECK ---
 router.get('/health', (req, res) => res.send('WhatsApp Backend Running'));
+
+const searchController = require('../controllers/searchController');
+
+// --- Search Routes ---
+router.get('/search/global', verifyToken, searchController.globalSearch);
+router.get('/search/chat/:chatId', verifyToken, searchController.chatSearch);
 
 module.exports = router;

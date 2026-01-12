@@ -63,7 +63,8 @@ class UserService {
   Future<String> updateProfilePhoto(dynamic imageFile) async {
     try {
       final uploadService = MediaUploadService();
-      final url = await uploadService.uploadAvatar(imageFile);
+      final mediaData = await uploadService.uploadAvatar(imageFile);
+      final url = mediaData['url'];
       
       // Backend automatically updates the user document in MongoDB.
       // The stream will pick up the change on next poll.

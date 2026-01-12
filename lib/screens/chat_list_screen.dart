@@ -12,9 +12,12 @@ import 'package:intl/intl.dart';
 import 'package:whatsapp_clone/utils/chat_session_store.dart';
 import 'package:whatsapp_clone/utils/platform_helper.dart';
 
+import 'package:whatsapp_clone/services/search_service.dart';
+import 'package:whatsapp_clone/widgets/global_search_overlay.dart';
+
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
-  final Function(Contact, String, String)? onChatSelected;
+  final Function(Contact, String, String)? onChatSelected; // contact, peerId, chatId
 
   const MobileChatLayout({
     super.key,
@@ -28,93 +31,251 @@ class MobileChatLayout extends StatefulWidget {
 
 class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  
+  // Search State
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final SearchService _searchService = SearchService();
+  final ChatService _chatService = ChatService();
+  
+  Map<String, dynamic> _searchResults = {};
+  bool _isLoadingSearch = false;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (_isSearching && _searchController.text.trim().isNotEmpty) {
+        _performSearch(_searchController.text.trim());
+      }
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() => _isLoadingSearch = true);
+    try {
+      final results = await _searchService.searchGlobal(query);
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isLoadingSearch = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingSearch = false);
+    }
+  }
+
+  void _startSearch() {
+    setState(() {
+      _isSearching = true;
+      _searchResults = {};
+    });
+    _searchFocusNode.requestFocus();
+  }
+
+  void _closeSearch() {
+    if (_isSearching) {
+      setState(() {
+        _isSearching = false;
+        _searchController.clear();
+        _searchResults = {};
+      });
+      _searchFocusNode.unfocus();
+    }
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_isSearching) {
+      _closeSearch();
+      return false;
+    }
+    return true;
+  }
+
+  void _handleSearchResultTap(String type, Map<String, dynamic>? data) async {
+    if (data == null) return;
+    
+    String? chatId;
+    String name = 'Unknown';
+    String image = '';
+    String peerId = '';
+    bool isGroup = false;
+
+    if (type == 'contact') {
+      // Find or Create Chat
+      peerId = data['firebaseUid'];
+      name = data['name'];
+      image = data['avatar'] ?? '';
+      try {
+        chatId = await _chatService.createOrGetChat(peerId);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to open chat")));
+        return;
+      }
+    } else if (type == 'chat') {
+       chatId = data['_id'];
+       isGroup = true;
+       name = data['groupName'];
+       image = data['groupPhoto'] ?? '';
+    } else if (type == 'message') {
+       chatId = data['_id']; // Wait, message search returns message object.
+       // We need chat details. In my controller I populated chatId.
+       final chatObj = data['chatId']; // This is populated
+       if (chatObj is Map<String, dynamic>) {
+           chatId = chatObj['_id'];
+           isGroup = chatObj['isGroup'] == true;
+           if (isGroup) {
+               name = chatObj['groupName'];
+           } else {
+               // Resolve peer name? For now use Sender Name or generic.
+               final sender = data['senderId'];
+               name = (sender is Map) ? sender['name'] : 'Chat';
+           }
+       } else {
+           // Fallback if not populated correctly
+           chatId = data['chatId']; // string
+       }
+    }
+
+    if (chatId != null) {
+        // Navigate
+        final contact = Contact(name: name, profileImage: image, isOnline: true);
+        if (widget.isWeb && widget.onChatSelected != null) {
+           widget.onChatSelected!(contact, peerId, chatId!);
+        } else {
+           Navigator.push(context, MaterialPageRoute(builder: (c) => ChatScreen(
+              contact: contact, peerId: peerId, chatId: chatId!, isGroup: isGroup
+           )));
+        }
+        // TODO: If message, pass highlight ID or scroll to it.
+        // The user wants click message -> open chat and scroll to message.
+        // We will pass `scrollToMessageId` to ChatScreen?
+        // I need to update ChatScreen to accept `scrollToMessageId` or similar.
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messaging App', style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(icon: const Icon(Icons.camera_alt_outlined), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'Settings') {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-              } else if (value == 'New group') {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen()));
-              } else if (value == 'Archived') {
-                Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text("Archived")),
-                      body: ChatListScreen(isWeb: widget.isWeb, filter: 'archived', onChatSelected: widget.onChatSelected)
-                    )
-                  )
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'New group', child: Text('New group')),
-              const PopupMenuItem(value: 'New community', child: Text('New community')),
-              const PopupMenuItem(value: 'Archived', child: Text('Archived')),
-              const PopupMenuItem(value: 'Broadcast lists', child: Text('Broadcast lists')),
-              const PopupMenuItem(value: 'Linked devices', child: Text('Linked devices')),
-              const PopupMenuItem(value: 'Starred', child: Text('Starred')),
-              const PopupMenuItem(value: 'Payments', child: Text('Payments')),
-              const PopupMenuItem(value: 'Settings', child: Text('Settings')),
-            ],
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          tabs: const [
-             Tab(text: 'All'),
-             Tab(text: 'Unread'),
-             Tab(text: 'Favorites'),
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        appBar: _isSearching ? _buildSearchBar() : _buildNormalAppBar(),
+        body: Stack(
+          children: [
+            TabBarView(
+              controller: _tabController,
+              children: [
+                 ChatListScreen(filter: 'all', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+                 ChatListScreen(filter: 'unread', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+                 ChatListScreen(filter: 'favorites', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+              ],
+            ),
+            if (_isSearching)
+              Positioned.fill(
+                child: GlobalSearchOverlay(
+                  results: _searchResults, 
+                  isLoading: _isLoadingSearch, 
+                  onResultTap: _handleSearchResultTap
+                ),
+              ),
           ],
         ),
+        floatingActionButton: !_isSearching ? FloatingActionButton(
+          backgroundColor: const Color(0xFF9575CD),
+          child: const Icon(Icons.message, color: Colors.white),
+          onPressed: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen()));
+          },
+        ) : null,
       ),
-      body: TabBarView(
+    );
+  }
+
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
+      title: const Text('Messaging App', style: TextStyle(fontWeight: FontWeight.bold)),
+      actions: [
+        IconButton(icon: const Icon(Icons.camera_alt_outlined), onPressed: () {}),
+        IconButton(icon: const Icon(Icons.search), onPressed: _startSearch),
+        PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'Settings') {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+            } else if (value == 'New group') {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen()));
+            } else if (value == 'New community') {
+               Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen(isCommunity: true)));
+            } else if (value == 'Archived') {
+              Navigator.push(
+                context, 
+                MaterialPageRoute(
+                  builder: (context) => Scaffold(
+                    appBar: AppBar(title: const Text("Archived")),
+                    body: ChatListScreen(isWeb: widget.isWeb, filter: 'archived', onChatSelected: widget.onChatSelected)
+                  )
+                )
+              );
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'New group', child: Text('New group')),
+            const PopupMenuItem(value: 'New community', child: Text('New community')),
+            const PopupMenuItem(value: 'Archived', child: Text('Archived')),
+            const PopupMenuItem(value: 'Broadcast lists', child: Text('Broadcast lists')),
+            const PopupMenuItem(value: 'Linked devices', child: Text('Linked devices')),
+            const PopupMenuItem(value: 'Starred', child: Text('Starred')),
+            const PopupMenuItem(value: 'Payments', child: Text('Payments')),
+            const PopupMenuItem(value: 'Settings', child: Text('Settings')),
+          ],
+        ),
+      ],
+      bottom: TabBar(
         controller: _tabController,
-        children: [
-           // All Chats
-           ChatListScreen(
-             filter: 'all', 
-             isWeb: widget.isWeb,
-             onChatSelected: widget.onChatSelected,
-           ),
-           // Unread Chats
-           ChatListScreen(
-             filter: 'unread',
-             isWeb: widget.isWeb,
-             onChatSelected: widget.onChatSelected,
-           ),
-           // Favorites
-           ChatListScreen(
-             filter: 'favorites',
-             isWeb: widget.isWeb,
-             onChatSelected: widget.onChatSelected,
-           ),
+        indicatorColor: Colors.white,
+        tabs: const [
+           Tab(text: 'All'),
+           Tab(text: 'Unread'),
+           Tab(text: 'Favorites'),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF9575CD),
-        child: const Icon(Icons.message, color: Colors.white),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const NewChatScreen()),
-          );
-        },
+    );
+  }
+
+  PreferredSizeWidget _buildSearchBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.grey),
+        onPressed: _closeSearch,
+      ),
+      title: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        decoration: const InputDecoration(
+          hintText: 'Search...',
+          border: InputBorder.none,
+          hintStyle: TextStyle(color: Colors.grey),
+        ),
+        style: const TextStyle(color: Colors.black),
       ),
     );
   }
@@ -162,6 +323,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       if (updateLoading && mounted) setState(() => _isLoading = true);
       
       final chats = await _chatService.getMyChats();
+      // User requested NOT to hide blocked chats, so we display all.
       
       if (mounted) {
         setState(() {
@@ -170,6 +332,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         });
       }
     } catch (e) {
+      print("Error loading chats: $e");
       if (mounted && updateLoading) setState(() => _isLoading = false);
     }
   }

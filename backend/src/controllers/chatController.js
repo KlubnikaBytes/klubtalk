@@ -1,6 +1,7 @@
 const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const Community = require('../models/Community');
 
 // Create or Get Private Chat
 exports.createPrivateChat = async (req, res) => {
@@ -94,6 +95,94 @@ exports.createGroupChat = async (req, res) => {
     }
 };
 
+// Create Community
+exports.createCommunity = async (req, res) => {
+    const { name, description, icon, groupIds } = req.body; // groupIds: array of Chat IDs
+    const currentUserId = req.user.uid;
+
+    if (!name) return res.status(400).json({ error: 'Community name is required' });
+
+    try {
+        // 1. Fetch Selected Groups to get all unique participants
+        const selectedGroups = await Chat.find({ _id: { $in: groupIds || [] } }).select('participants');
+
+        // Flatten participants
+        const allMemberSet = new Set([currentUserId]);
+        selectedGroups.forEach(g => {
+            g.participants.forEach(p => allMemberSet.add(p));
+        });
+        const allMembers = Array.from(allMemberSet);
+
+        // 2. Create Announcements Group
+        const announcementsChatId = new Date().getTime().toString() + '_ann';
+
+        const announcementsChat = new Chat({
+            _id: announcementsChatId,
+            isGroup: true,
+            isCommunityAnnouncements: true,
+            groupName: `${name} Announcements`,
+            groupPhoto: icon || '',
+            createdBy: currentUserId,
+            admins: [currentUserId],
+            participants: allMembers,
+            lastMessage: {
+                text: 'Welcome to the community announcements',
+                type: 'system',
+                timestamp: new Date(),
+                senderId: 'system'
+            },
+            lastMessageTime: new Date(),
+            createdAt: new Date(),
+            unreadCount: allMembers.reduce((acc, uid) => ({ ...acc, [uid]: 0 }), {}),
+            isFavorite: allMembers.reduce((acc, uid) => ({ ...acc, [uid]: false }), {}),
+            isArchived: allMembers.reduce((acc, uid) => ({ ...acc, [uid]: false }), {})
+        });
+
+        await announcementsChat.save();
+
+        // 3. Create Community Record
+        const community = new Community({
+            name,
+            description,
+            icon,
+            creatorId: currentUserId,
+            admins: [currentUserId],
+            members: allMembers,
+            groupIds: groupIds || [],
+            announcementsGroupId: announcementsChat._id
+        });
+
+        await community.save();
+
+        res.status(201).json({
+            success: true,
+            communityId: community._id,
+            announcementsChatId: announcementsChat._id,
+            message: 'Community created'
+        });
+
+    } catch (error) {
+        console.error('Create Community Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get Community
+exports.getCommunity = async (req, res) => {
+    const { communityId } = req.params;
+    try {
+        const community = await Community.findById(communityId)
+            .populate('announcementsGroupId', 'groupName groupPhoto')
+            .populate('groupIds', 'groupName groupPhoto participants');
+
+        if (!community) return res.status(404).json({ error: 'Community not found' });
+
+        res.status(200).json(community);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 // Get My Chats
 exports.getMyChats = async (req, res) => {
     const currentUserId = req.user.uid;
@@ -140,7 +229,7 @@ exports.getMyChats = async (req, res) => {
 
 // Send Message
 exports.sendMessage = async (req, res) => {
-    const { chatId, content, type, duration } = req.body;
+    const { chatId, content, type, duration, previewUrl, originalUrl, mime } = req.body;
     const currentUserId = req.user.uid;
 
     if (!chatId || !content) return res.status(400).json({ error: 'Missing fields' });
@@ -152,7 +241,10 @@ exports.sendMessage = async (req, res) => {
             type: type || 'text',
             content,
             timestamp: new Date(),
-            duration: duration
+            duration: duration,
+            previewUrl,
+            originalUrl,
+            mime
         });
 
         // Handle Disappearing Messages
@@ -400,13 +492,24 @@ exports.reportChat = async (req, res) => {
 
 // Block User
 exports.blockUser = async (req, res) => {
-    const { targetUserId } = req.body;
-    const currentUserId = req.user.uid;
+    const { blocker_id, blocked_id } = req.body; // Expecting snake_case from request as per prompt, but current auth is req.user.uid
+    // Adjust to prompt requirements: logic says "Insert into blocked_users where blocker_id = A and blocked_id = B"
+    // We will use req.user.uid as blocker_id for security, but also support body params if purely testing API.
+    // However, secure way is using token.
+
+    const blockerId = req.user ? req.user.uid : blocker_id;
+    const blockedId = blocked_id || req.body.targetUserId; // Support both for compatibility
+
+    if (!blockerId || !blockedId) {
+        return res.status(400).json({ error: 'Missing blockerId or blockedId' });
+    }
 
     try {
-        await User.findOneAndUpdate(
-            { firebaseUid: currentUserId },
-            { $addToSet: { blockedUsers: targetUserId } }
+        const BlockedUser = require('../models/BlockedUser');
+        await BlockedUser.findOneAndUpdate(
+            { blockerId, blockedId },
+            { blockerId, blockedId, createdAt: new Date() },
+            { upsert: true, new: true }
         );
         res.status(200).json({ success: true, blocked: true });
     } catch (error) {
@@ -416,15 +519,37 @@ exports.blockUser = async (req, res) => {
 
 // Unblock User
 exports.unblockUser = async (req, res) => {
-    const { targetUserId } = req.body;
-    const currentUserId = req.user.uid;
+    // DELETE /block-user logic
+    // We might receive query params or body. Prompt said DELETE /block-user
+    // Usually DELETE requests use query params or url params, but body is possible too.
+    // Let's check req.body first.
+
+    const blockerId = req.user ? req.user.uid : req.body.blocker_id;
+    const blockedId = req.body.blocked_id || req.body.targetUserId;
+
+    if (!blockerId || !blockedId) {
+        return res.status(400).json({ error: 'Missing blockerId or blockedId' });
+    }
 
     try {
-        await User.findOneAndUpdate(
-            { firebaseUid: currentUserId },
-            { $pull: { blockedUsers: targetUserId } }
-        );
+        const BlockedUser = require('../models/BlockedUser');
+        await BlockedUser.findOneAndDelete({ blockerId, blockedId });
         res.status(200).json({ success: true, blocked: false });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get Blocked Users
+exports.getBlockedUsers = async (req, res) => {
+    const userId = req.params.userId || req.user.uid;
+
+    try {
+        const BlockedUser = require('../models/BlockedUser');
+        const blocks = await BlockedUser.find({ blockerId: userId }).select('blockedId');
+        const blockedIds = blocks.map(b => b.blockedId);
+
+        res.status(200).json(blockedIds); // Returns [ "USER_B", "USER_C" ]
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

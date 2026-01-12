@@ -17,6 +17,11 @@ const messageSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now },
     duration: { type: Number }, // Extra for voice
     expiresAt: { type: Date, index: true }, // Auto-delete time
+    previewUrl: { type: String },
+    originalUrl: { type: String },
+    mime: { type: String },
 });
+
+messageSchema.index({ content: 'text' });
 
 module.exports = mongoose.model('Message', messageSchema);

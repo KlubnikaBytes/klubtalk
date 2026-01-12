@@ -1,21 +1,29 @@
+
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:whatsapp_clone/models/contact.dart';
-import 'package:whatsapp_clone/services/chat_service.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:whatsapp_clone/widgets/audio_message_bubble.dart';
-import 'package:whatsapp_clone/widgets/avatar_widget.dart';
-import 'package:whatsapp_clone/widgets/voice_recorder_widget.dart';
-import 'package:whatsapp_clone/widgets/sent_message_bubble.dart';
-import 'package:whatsapp_clone/widgets/received_message_bubble.dart';
-import 'package:intl/intl.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:whatsapp_clone/utils/platform_helper.dart';
 import 'package:whatsapp_clone/screens/group_details_screen.dart';
+import 'package:whatsapp_clone/widgets/media/image_bubble_widget.dart';
+import 'package:whatsapp_clone/widgets/media/video_bubble_widget.dart';
+import 'package:whatsapp_clone/widgets/media/document_bubble_widget.dart';
+import 'package:whatsapp_clone/widgets/media/media_bubble_widget.dart';
 import 'package:whatsapp_clone/screens/group_media_screen.dart';
 import 'package:whatsapp_clone/utils/chat_session_store.dart';
+import 'package:whatsapp_clone/services/search_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mime/mime.dart';
+import 'package:intl/intl.dart';
+import 'package:whatsapp_clone/models/contact.dart';
+import 'package:whatsapp_clone/services/chat_service.dart';
+import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:whatsapp_clone/widgets/voice_recorder_widget.dart';
+import 'package:whatsapp_clone/widgets/audio_message_bubble.dart';
+
+import 'package:whatsapp_clone/screens/call/call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final Contact contact;
@@ -46,8 +54,20 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _pollingTimer;
   bool _isTyping = false;
   bool _isEmojiPickerVisible = false;
-  bool _isBlocked = false;
+  Set<String> _blockedUserIds = {};
+
+  bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
+
   Color _backgroundColor = const Color(0xFFECE5DD);
+
+  // Search State
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final SearchService _searchService = SearchService();
+  List<Map<String, dynamic>> _searchMatches = [];
+  int _currentMatchIndex = -1;
+  bool _isLoadingSearch = false;
 
   @override
   void initState() {
@@ -83,12 +103,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _checkBlockStatus() async {
+     if (widget.peerId.isEmpty) return; // Don't check for groups or invalid peers
+     
      try {
-       final blocked = await _chatService.getBlockedUsers();
+       final blockedList = await _chatService.getBlockedUsers();
+       print("DEBUG: Fetched blocked list: $blockedList");
+       
        if (mounted) {
          setState(() {
-           _isBlocked = blocked.contains(widget.peerId);
+           _blockedUserIds = blockedList.toSet();
          });
+         print("DEBUG: Checking if '${widget.peerId}' is in blocked list. Result: $_isPeerBlocked");
        }
      } catch (e) {
        print("Failed to check block status: $e");
@@ -203,18 +228,68 @@ class _ChatScreenState extends State<ChatScreen> {
       }
   }
 
-  Future<void> _pickAndSendImage() async {
+  Future<void> _pickAndSendMedia() async {
     final ImagePicker picker = ImagePicker();
     try {
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-      if (image != null) {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading image...')));
-         await _chatService.sendImageMessage(widget.chatId, image.path);
-         _loadMessages(updateLoading: false);
-         _scrollToBottom();
+      final XFile? media = await picker.pickMedia(); 
+      if (media != null) {
+          print("DEBUG: Media Path: ${media.path}");
+          print("DEBUG: XFile Mime: ${media.mimeType}");
+          
+          String mimeType = media.mimeType ?? lookupMimeType(media.path) ?? '';
+          print("DEBUG: Initial Resolved Mime: $mimeType");
+          
+          // Fallback: Read header bytes if mimeType is still unknown
+          if (mimeType.isEmpty) {
+             try {
+                final bytes = await media.readAsBytes(); // Read file to check magic numbers
+                final headerBytes = bytes.take(12).toList();
+                mimeType = lookupMimeType(media.path, headerBytes: headerBytes) ?? '';
+                print("DEBUG: Detected Mime from bytes: $mimeType");
+             } catch (e) {
+                print("DEBUG: Failed to read bytes for mime detection: $e");
+             }
+          }
+
+          print("DEBUG: Final MimeType: $mimeType");
+
+          if (mimeType.startsWith('video/')) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading video...')));
+              await _chatService.sendVideoMessage(widget.chatId, media.path, mimeType: mimeType);
+          } else if (mimeType.startsWith('image/')) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading image...')));
+              await _chatService.sendImageMessage(widget.chatId, media.path, mimeType: mimeType);
+          } else {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unsupported media type: $mimeType for ${media.path}')));
+             return;
+          }
+
+          _loadMessages(updateLoading: false);
+          _scrollToBottom();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> _pickAndSendFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any, 
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading file...')));
+        
+        await _chatService.sendFileMessage(widget.chatId, path);
+        
+        _loadMessages(updateLoading: false);
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -475,7 +550,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ChatSessionStore().deleteChat(widget.chatId);
                     if (mounted) {
                       setState(() {
-                        _isBlocked = true;
+                         _blockedUserIds.add(widget.peerId);
                       });
                     }
                  }
@@ -513,7 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
               try {
                 await _chatService.blockUser(widget.peerId);
                 if(mounted) {
-                  setState(() => _isBlocked = true);
+                  setState(() => _blockedUserIds.add(widget.peerId));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You blocked this contact")));
                 }
               } catch(e) {
@@ -530,7 +605,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _unblockContact() async {
      try {
        await _chatService.unblockUser(widget.peerId);
-       setState(() => _isBlocked = false);
+       setState(() => _blockedUserIds.remove(widget.peerId));
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You unblocked this contact")));
      } catch(e) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to unblock")));
@@ -538,7 +613,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessageInput() {
-     if (_isBlocked) {
+     if (_isPeerBlocked) {
        return Container(
          padding: const EdgeInsets.all(16),
          alignment: Alignment.center,
@@ -589,9 +664,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.attach_file, color: Colors.grey), 
-                          onPressed: _pickAndSendImage,
+                          onPressed: _pickAndSendFile,
                         ),
-                        if (!_isTyping) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _pickAndSendImage),
+                        if (!_isTyping) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _pickAndSendMedia),
                       ],
                     ),
                   ),
@@ -615,13 +690,126 @@ class _ChatScreenState extends State<ChatScreen> {
           );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-      backgroundColor: _backgroundColor,
-      appBar: AppBar(
+  // --- SEARCH LOGIC ---
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+         _searchController.clear();
+         _searchMatches = [];
+         _currentMatchIndex = -1;
+      }
+    });
+    if (_isSearching) {
+       _searchFocusNode.requestFocus();
+    }
+  }
+
+  void _executeSearch(String query) async {
+     if (query.trim().isEmpty) return;
+     setState(() => _isLoadingSearch = true);
+     
+     try {
+       final matches = await _searchService.searchChat(widget.chatId, query);
+       // Matches from backend are usually sorted by time (newest first or oldest first depends on backend)
+       // We want to navigate them. 
+       if (matches.isNotEmpty) {
+           setState(() {
+             _searchMatches = matches;
+             _currentMatchIndex = 0; // Start at first match (usually newest since backend sorts desc)
+             _isLoadingSearch = false;
+           });
+           _scrollToMatch(_currentMatchIndex);
+       } else {
+           setState(() {
+             _searchMatches = [];
+             _isLoadingSearch = false;
+           });
+       }
+     } catch (e) {
+       setState(() => _isLoadingSearch = false);
+       print("Search Error: $e");
+     }
+  }
+
+  void _nextMatch() {
+    if (_searchMatches.isEmpty) return;
+    setState(() {
+      if (_currentMatchIndex < _searchMatches.length - 1) {
+        _currentMatchIndex++;
+      } else {
+        _currentMatchIndex = 0; // Loop
+      }
+    });
+    _scrollToMatch(_currentMatchIndex);
+  }
+
+  void _prevMatch() {
+     if (_searchMatches.isEmpty) return;
+     setState(() {
+       if (_currentMatchIndex > 0) {
+         _currentMatchIndex--;
+       } else {
+         _currentMatchIndex = _searchMatches.length - 1; // Loop
+       }
+     });
+     _scrollToMatch(_currentMatchIndex);
+  }
+
+  void _scrollToMatch(int index) {
+     final matchId = _searchMatches[index]['_id'];
+     // Find index in _messages
+     // _messages is sorted? usually newest at index 0 if reverse is true?
+     // ListView is reverse: true. So index 0 is bottom (newest).
+     // Backend returns matches. If backend sorts timestamp desc, match 0 is newest.
+     
+     final msgIndex = _messages.indexWhere((m) => m['_id'] == matchId);
+     if (msgIndex != -1) {
+        // Scroll to this index.
+        // Rough estimation: 70 pixels per message
+        _scrollController.animateTo(
+           msgIndex * 70.0, 
+           duration: const Duration(milliseconds: 300), 
+           curve: Curves.easeOut
+        );
+     } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Message not loaded in view")));
+     }
+  }
+
+  Widget _buildHighlightText(String text, String query, Color textColor) {
+     if (query.isEmpty) return Text(text, style: TextStyle(fontSize: 16, color: textColor));
+     
+     final matches = query.allMatches(text.toLowerCase());
+     if (matches.isEmpty) return Text(text, style: TextStyle(fontSize: 16, color: textColor));
+     
+     List<TextSpan> spans = [];
+     int start = 0;
+     final lcText = text.toLowerCase();
+     final lcQuery = query.toLowerCase();
+     
+     int idx = lcText.indexOf(lcQuery);
+     while (idx != -1) {
+        if (idx > start) {
+           spans.add(TextSpan(text: text.substring(start, idx), style: TextStyle(color: textColor)));
+        }
+        spans.add(TextSpan(
+           text: text.substring(idx, idx + query.length),
+           style: const TextStyle(backgroundColor: Color(0xFFFFF176), color: Colors.black) // Highlight always black on yellow
+        ));
+        start = idx + query.length;
+        idx = lcText.indexOf(lcQuery, start);
+     }
+     if (start < text.length) {
+        spans.add(TextSpan(text: text.substring(start), style: TextStyle(color: textColor)));
+     }
+     
+     return RichText(text: TextSpan(style: TextStyle(fontSize: 16, color: textColor), children: spans));
+  }
+
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
         titleSpacing: 0,
         backgroundColor: const Color(0xFF9575CD),
         foregroundColor: Colors.white,
@@ -647,8 +835,42 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.videocam), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.call), onPressed: () {}),
+          if (!widget.isGroup) ...[
+            IconButton(
+              icon: const Icon(Icons.videocam), 
+              onPressed: () {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(
+                    builder: (context) => CallScreen(
+                      peerName: widget.contact.name,
+                      peerAvatar: widget.contact.profileImage,
+                      isCaller: true,
+                      peerId: widget.peerId, // This is the firebaseUid of the other user
+                      isVideo: true,
+                    )
+                  )
+                );
+              }
+            ),
+            IconButton(
+              icon: const Icon(Icons.call), 
+              onPressed: () {
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(
+                    builder: (context) => CallScreen(
+                      peerName: widget.contact.name,
+                      peerAvatar: widget.contact.profileImage,
+                      isCaller: true,
+                      peerId: widget.peerId,
+                      isVideo: false,
+                    )
+                  )
+                );
+              }
+            ),
+          ],
           PopupMenuButton<String>(
             onSelected: (value) {
                switch(value) {
@@ -681,7 +903,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                    }
                    break;
-                 case 'search': break; // TODO
+                 case 'search': _toggleSearch(); break;
                  case 'mute': _showMuteDialog(); break;
                  case 'disappearing': _showDisappearingDialog(); break;
                  case 'wallpaper': _showWallpaperDialog(); break;
@@ -699,13 +921,63 @@ class _ChatScreenState extends State<ChatScreen> {
                 const PopupMenuItem(value: 'disappearing', child: Text('Disappearing messages')),
                 const PopupMenuItem(value: 'wallpaper', child: Text('Wallpaper')),
                 const PopupMenuItem(value: 'report', child: Text('Report')),
-                if (!widget.isGroup) const PopupMenuItem(value: 'block', child: Text('Block')),
+                if (!widget.isGroup && widget.peerId.isNotEmpty) const PopupMenuItem(value: 'block', child: Text('Block')),
                 const PopupMenuItem(value: 'more', child: Text('More')), 
               ];
             }
           ),
         ],
+      );
+  }
+
+  PreferredSizeWidget _buildSearchBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.grey),
+        onPressed: _toggleSearch,
       ),
+      title: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        decoration: const InputDecoration(
+          hintText: 'Search...',
+          border: InputBorder.none,
+        ),
+        onSubmitted: _executeSearch,
+        textInputAction: TextInputAction.search,
+      ),
+      actions: [
+        if (_searchMatches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+             child: Center(child: Text("${_currentMatchIndex + 1}/${_searchMatches.length}", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+          ),
+        IconButton(
+          icon: const Icon(Icons.keyboard_arrow_up, color: Colors.grey),
+          onPressed: _prevMatch,
+        ),
+        IconButton(
+          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
+          onPressed: _nextMatch,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+         if (_isSearching) {
+            _toggleSearch();
+            return false;
+         }
+         return _onWillPop();
+      },
+      child: Scaffold(
+      backgroundColor: _backgroundColor,
+      appBar: _isSearching ? _buildSearchBar() : _buildNormalAppBar(),
       body: Column(
         children: [
           Expanded(
@@ -727,6 +999,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         final isMe = data['senderId'] == FirebaseAuth.instance.currentUser?.uid;
                         final type = data['type'] ?? 'text';
                         final content = data['content'] ?? data['text'] ?? '';
+                        final mimeType = (data['mimeType'] ?? '').toString().toLowerCase();
                         
                         int duration = 0;
                         if (data['duration'] != null) {
@@ -779,29 +1052,44 @@ class _ChatScreenState extends State<ChatScreen> {
                                     isSender: isMe,
                                     durationSeconds: duration,
                                   ) 
-                                : type == 'image'
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        _getFullUrl(content),
-                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                        loadingBuilder: (context, child, loadingProgress) {
-                                          if (loadingProgress == null) return child;
-                                          return Container(
-                                            width: 200, height: 200,
-                                            color: Colors.black12,
-                                            child: const Center(child: CircularProgressIndicator()),
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  : Text(
-                                  content,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: isMe ? Colors.white : Colors.black,
+
+                                : Builder(
+                                    builder: (context) {
+                                      // 🧠 MESSAGE CLASSIFICATION LOGIC
+                                      // 1️⃣ CAMERA ICON MEDIA (Photo / Video)
+                                      // STRICT: Only render as Image if type is image OR mime is image (and not video)
+                                      if ((type == 'image' && !mimeType.startsWith('video')) || mimeType.startsWith('image/')) {
+                                         return MediaBubbleWidget(message: data, isMe: isMe);
+                                      }
+                                      
+                                      // STRICT: Only render as Video if type is video OR mime is video
+                                      if (type == 'video' || mimeType.startsWith('video/')) {
+                                         return MediaBubbleWidget(message: data, isMe: isMe);
+                                      }
+
+                                      // 2️⃣ ATTACHMENT ICON MEDIA (Paperclip) -> Document Bubble
+                                      if (type == 'file' || type == 'document' || type == 'audio') {
+                                         return MediaBubbleWidget(message: data, isMe: isMe);
+                                      }
+                                      
+                                      // Fallback for mixed cases (e.g. file sent as image via old endpoint but mime is distinct)
+                                      if (mimeType.startsWith('image')) return MediaBubbleWidget(message: data, isMe: isMe);
+                                      if (mimeType.startsWith('video')) return MediaBubbleWidget(message: data, isMe: isMe);
+                                      
+                                      // Final Fallback for unclassified files
+                                      if (data.containsKey('filename') || data.containsKey('url')) {
+                                         return MediaBubbleWidget(message: data, isMe: isMe);
+                                      }
+
+                                      // Default Text
+                                      return _buildHighlightText(
+                                        content, 
+                                        _isSearching ? _searchController.text : '',
+                                        isMe ? Colors.white : Colors.black
+                                      );
+                                    }
                                   ),
-                                ),
+
                                 const SizedBox(height: 4),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,

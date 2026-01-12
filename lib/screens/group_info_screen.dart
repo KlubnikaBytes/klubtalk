@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart';
+import 'package:whatsapp_clone/screens/group_details_screen.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   final List<String> selectedParticipantIds;
+  final bool isCommunity;
 
-  const GroupInfoScreen({super.key, required this.selectedParticipantIds});
+  const GroupInfoScreen({super.key, required this.selectedParticipantIds, this.isCommunity = false});
 
   @override
   State<GroupInfoScreen> createState() => _GroupInfoScreenState();
@@ -14,48 +16,49 @@ class GroupInfoScreen extends StatefulWidget {
 
 class _GroupInfoScreenState extends State<GroupInfoScreen> {
   final TextEditingController _subjectController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
   final ChatService _chatService = ChatService();
   bool _isCreating = false;
 
-  Future<void> _createGroup() async {
+  Future<void> _create() async {
     final name = _subjectController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a group subject')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please enter a ${widget.isCommunity ? "community" : "group"} subject')));
       return;
     }
 
     setState(() => _isCreating = true);
 
     try {
-      // Create Group in Firestore
-      final chatId = await _chatService.createGroupChat(name, widget.selectedParticipantIds);
-      
-      if (mounted) {
-        // Navigate to Chat Screen
-        // Replace strictly to remove creation screens from back stack
-        Navigator.popUntil(context, (route) => route.isFirst); 
-        
-        final groupContact = Contact(
-          name: name,
-          profileImage: '', // Placeholder
-          isOnline: false, // Groups don't have online status
-        );
-        
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              contact: groupContact,
-              peerId: 'group', // dummy
-              chatId: chatId,
-              isGroup: true,
-            ),
-          ),
-        );
+      if (widget.isCommunity) {
+         final result = await _chatService.createCommunity(name, _descriptionController.text.trim(), widget.selectedParticipantIds);
+         
+         if (mounted) {
+             Navigator.popUntil(context, (route) => route.isFirst);
+             // Navigate to Community Home
+             Navigator.push(
+                context,
+                MaterialPageRoute(
+                   builder: (context) => GroupDetailsScreen(
+                      chatId: result['announcementsChatId'], // Just to satisfy param
+                      groupName: name, 
+                      isCommunity: true,
+                      communityId: result['communityId']
+                   )
+                )
+             );
+         }
+      } else {
+         final chatId = await _chatService.createGroupChat(name, widget.selectedParticipantIds);
+         if (mounted) {
+            Navigator.popUntil(context, (route) => route.isFirst); 
+            final groupContact = Contact(name: name, profileImage: '', isOnline: false);
+            Navigator.push(context, MaterialPageRoute(builder: (c) => ChatScreen(contact: groupContact, peerId: 'group', chatId: chatId, isGroup: true)));
+         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error creating group: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error creating ${widget.isCommunity ? "community" : "group"}: $e')));
         setState(() => _isCreating = false);
       }
     }
@@ -67,11 +70,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF9575CD),
         foregroundColor: Colors.white,
-        title: const Column(
+         title: Column(
            crossAxisAlignment: CrossAxisAlignment.start,
            children: [
-             Text('New Group', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-             Text('Add subject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+             Text(widget.isCommunity ? 'New Community' : 'New Group', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+             Text(widget.isCommunity ? 'Community info' : 'Add subject', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
            ],
         ),
       ),
@@ -94,8 +97,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                  Expanded(
                    child: TextField(
                      controller: _subjectController,
-                     decoration: const InputDecoration(
-                       hintText: 'Type group subject here...',
+                     decoration: InputDecoration(
+                       hintText: widget.isCommunity ? 'Community name' : 'Type group subject here...',
                        contentPadding: EdgeInsets.zero,
                      ),
                      maxLength: 25,
@@ -104,8 +107,20 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                  const Icon(Icons.emoji_emotions_outlined, color: Colors.grey),
                ],
              ),
+             if (widget.isCommunity) ...[
+                const SizedBox(height: 20),
+                TextField(
+                   controller: _descriptionController,
+                   decoration: const InputDecoration(
+                     hintText: 'Community Description (optional)',
+                     border: OutlineInputBorder(),
+                     contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                   ),
+                   maxLines: 3,
+                ),
+             ],
              const SizedBox(height: 20),
-             Text('Participants: ${widget.selectedParticipantIds.length}', style: const TextStyle(color: Colors.grey)),
+             Text(widget.isCommunity ? 'Groups: ${widget.selectedParticipantIds.length}' : 'Participants: ${widget.selectedParticipantIds.length}', style: const TextStyle(color: Colors.grey)),
              
              const Spacer(),
              
@@ -115,7 +130,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF9575CD),
-        onPressed: _isCreating ? null : _createGroup,
+        onPressed: _isCreating ? null : _create,
         child: const Icon(Icons.check, color: Colors.white),
       ),
     );
