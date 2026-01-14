@@ -40,8 +40,13 @@ class ChatService {
   }
 
   // Send Text Message
-  Future<void> sendMessage(String chatId, String text) async {
-    await _sendMessageToBackend(chatId, text, 'text');
+  Future<void> sendMessage(String chatId, String text, {String type = 'text'}) async {
+    await _sendMessageToBackend(chatId, text, type);
+  }
+
+  // Send Sticker Message
+  Future<void> sendStickerMessage(String chatId, String stickerUrl) async {
+      await _sendMessageToBackend(chatId, stickerUrl, 'sticker');
   }
 
   // Send Voice Message
@@ -62,14 +67,15 @@ class ChatService {
   }
 
   // Send Image Message
-  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType}) async {
+  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadImage(fileOrPath, mimeType: mimeType);
       await _sendMessageToBackend(chatId, mediaData['url'], 'image',
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
-        mime: mediaData['mime'] // Use backend returned mime, or fall back to what we sent? Backend usually detects. But on Web we need extension for backend to detect.
+        mime: mediaData['mime'],
+        caption: caption
       );
     } catch (e) {
       print('Image Send Error: $e');
@@ -78,7 +84,7 @@ class ChatService {
   }
 
   // Send Video Message
-  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType}) async {
+  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption}) async {
     try {
       final uploadService = MediaUploadService();
       // Reuse uploadImage/Generic for now as backend handles generic media uploads
@@ -86,7 +92,8 @@ class ChatService {
       await _sendMessageToBackend(chatId, mediaData['url'], 'video',
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
-        mime: mediaData['mime']
+        mime: mediaData['mime'],
+        caption: caption
       );
     } catch (e) {
       print('Video Send Error: $e');
@@ -130,7 +137,8 @@ class ChatService {
     String? originalUrl, 
     String? mime,
     String? filename,
-    int? size
+    int? size,
+    String? caption
   }) async {
     try {
       final response = await http.post(
@@ -146,6 +154,7 @@ class ChatService {
           if (mime != null) 'mime': mime,
           if (filename != null) 'filename': filename,
           if (size != null) 'size': size,
+          if (caption != null && caption.isNotEmpty) 'caption': caption,
         }),
       );
 

@@ -13,15 +13,24 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
-
-  if (kIsWeb) {
-    preventBrowserContextMenu();
-  }
   
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await dotenv.load(fileName: ".env");
+
+    if (kIsWeb) {
+      preventBrowserContextMenu();
+    }
+    
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      print("Initialization error: $e");
+    }
+  }
   
   runApp(const MyApp());
 }
@@ -43,27 +52,27 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _initSocket() {
-    final socketService = SocketService();
-    socketService.initSocket();
+    try {
+      final socketService = SocketService();
+      socketService.initSocket();
 
-    socketService.on('incoming-call', (data) {
-       // data: { from, callType, offer }
-       // Resolve caller name/avatar if possible or pass raw data
-       // We need to fetch contact info or just show unknown for now
-       // Or the backend should send caller info. Backend sends: from (uid), callType, offer.
-       // We can fetch user details via API or just show ID for now.
-       
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => IncomingCallScreen(
-              callerName: "User ${data['from'].toString().substring(0, 5)}...", // Temp Name
-              callerAvatar: "", // Temp Avatar
-              callType: data['callType'],
-              callData: data,
-            )
-          )
-        );
-    });
+      socketService.on('incoming-call', (data) {
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.push(
+              MaterialPageRoute(
+                builder: (_) => IncomingCallScreen(
+                  callerName: "User ${data['from'].toString().substring(0, 5)}...",
+                  callerAvatar: "",
+                  callType: data['callType'],
+                  callData: data,
+                )
+              )
+            );
+          }
+      });
+    } catch (e) {
+      debugPrint("Socket init error: $e");
+    }
   }
   
   @override

@@ -22,21 +22,28 @@ import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/widgets/voice_recorder_widget.dart';
 import 'package:whatsapp_clone/widgets/audio_message_bubble.dart';
+import 'package:whatsapp_clone/widgets/sticker_picker_widget.dart';
+import 'package:whatsapp_clone/widgets/sticker_message_widget.dart';
+import 'package:whatsapp_clone/models/sticker_model.dart';
 
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  final Contact contact;
+  final Contact? contact;
   final String peerId;
   final String chatId;
   final bool isGroup;
+  final String? groupName;
+  final String? groupPhoto;
 
   const ChatScreen({
     super.key,
-    required this.contact,
+    this.contact,
     required this.peerId,
     required this.chatId,
     this.isGroup = false,
+    this.groupName, 
+    this.groupPhoto
   });
 
   @override
@@ -54,6 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _pollingTimer;
   bool _isTyping = false;
   bool _isEmojiPickerVisible = false;
+  bool _isStickerPickerVisible = false;
   Set<String> _blockedUserIds = {};
 
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
@@ -88,6 +96,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_focusNode.hasFocus) {
         setState(() {
           _isEmojiPickerVisible = false;
+          _isStickerPickerVisible = false;
         });
       }
     });
@@ -131,14 +140,60 @@ class _ChatScreenState extends State<ChatScreen> {
       await Future.delayed(const Duration(milliseconds: 50)); 
       setState(() {
         _isEmojiPickerVisible = true;
+        _isStickerPickerVisible = false;
       });
     }
   }
 
+  Future<void> _toggleStickerPicker() async {
+    if (_isStickerPickerVisible) {
+      _focusNode.requestFocus();
+      setState(() => _isStickerPickerVisible = false);
+    } else {
+      _focusNode.unfocus();
+      await Future.delayed(const Duration(milliseconds: 50));
+      setState(() {
+         _isStickerPickerVisible = true;
+         _isEmojiPickerVisible = false;
+      });
+    }
+  }
+
+  void _sendSticker(Sticker sticker) async {
+     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+     final optimisticMessage = {
+       '_id': tempId,
+       'chatId': widget.chatId,
+       'senderId': FirebaseAuth.instance.currentUser?.uid,
+       'type': 'sticker',
+       'content': sticker.imageUrl,
+       'timestamp': DateTime.now().toIso8601String(),
+       'status': 'sending' 
+     };
+
+     setState(() {
+       _messages.insert(0, optimisticMessage);
+     });
+     _scrollToBottom();
+     
+     try {
+       await _chatService.sendStickerMessage(widget.chatId, sticker.imageUrl);
+       _loadMessages(updateLoading: false);
+     } catch (e) {
+        if(mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send sticker: $e')));
+           setState(() {
+             _messages.removeWhere((m) => m['_id'] == tempId);
+           });
+        }
+     }
+  }
+
   Future<bool> _onWillPop() async {
-    if (_isEmojiPickerVisible) {
+    if (_isEmojiPickerVisible || _isStickerPickerVisible) {
       setState(() {
         _isEmojiPickerVisible = false;
+        _isStickerPickerVisible = false;
       });
       return false;
     }
@@ -465,7 +520,7 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text("Report \"${widget.contact.name}\" to WhatsApp?"), // Using "WhatsApp" as per clone context or "App"
+          title: Text("Report \"${widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Contact')}\" to WhatsApp?"), // Using "WhatsApp" as per clone context or "App"
           content: Column(
              mainAxisSize: MainAxisSize.min,
              crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,7 +540,7 @@ class _ChatScreenState extends State<ChatScreen> {
                        ),
                      ),
                      const SizedBox(width: 10),
-                     Expanded(child: Text("Block ${widget.contact.name} and delete chat"))
+                     Expanded(child: Text("Block ${widget.contact?.name ?? 'Contact'} and delete chat"))
                    ],
                  )
                ]
@@ -578,7 +633,7 @@ class _ChatScreenState extends State<ChatScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Block \"${widget.contact.name}\"?"),
+        title: Text("Block \"${widget.contact?.name ?? 'Contact'}\"?"),
         content: const Text("Blocked contacts will no longer be able to call you or send you messages."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
@@ -650,6 +705,13 @@ class _ChatScreenState extends State<ChatScreen> {
                             color: Colors.grey
                           ),
                           onPressed: _toggleEmojiPicker,
+                        ),
+                        IconButton(
+                          icon: Icon(
+                             _isStickerPickerVisible ? Icons.layers : Icons.layers_outlined,
+                             color: Colors.grey
+                          ),
+                          onPressed: _toggleStickerPicker,
                         ),
                         Expanded(
                           child: TextField(
@@ -819,15 +881,15 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         title: Row(
           children: [
-            AvatarWidget(imageUrl: widget.contact.profileImage, radius: 18),
+            AvatarWidget(imageUrl: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '', radius: 18),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.contact.name, style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
-                  if (!widget.isGroup)
-                    Text(widget.contact.isOnline ? 'Online' : 'Offline', 
+                  Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
+                  if (!widget.isGroup && widget.contact != null)
+                    Text(widget.contact!.isOnline ? 'Online' : 'Offline', 
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
                 ],
               ),
@@ -843,8 +905,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   context, 
                   MaterialPageRoute(
                     builder: (context) => CallScreen(
-                      peerName: widget.contact.name,
-                      peerAvatar: widget.contact.profileImage,
+                      peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
+                      peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
                       isCaller: true,
                       peerId: widget.peerId, // This is the firebaseUid of the other user
                       isVideo: true,
@@ -860,8 +922,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   context, 
                   MaterialPageRoute(
                     builder: (context) => CallScreen(
-                      peerName: widget.contact.name,
-                      peerAvatar: widget.contact.profileImage,
+                      peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
+                      peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
                       isCaller: true,
                       peerId: widget.peerId,
                       isVideo: false,
@@ -874,15 +936,15 @@ class _ChatScreenState extends State<ChatScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
                switch(value) {
-                 case 'view_contact': 
+                  case 'view_contact': 
                    if (widget.isGroup) {
                       Navigator.push(
                         context, 
                         MaterialPageRoute(
                           builder: (context) => GroupDetailsScreen(
                             chatId: widget.chatId,
-                            groupName: widget.contact.name,
-                            groupIcon: widget.contact.profileImage,
+                            groupName: widget.groupName ?? 'Group',
+                            groupIcon: widget.groupPhoto ?? '',
                           )
                         )
                       );
@@ -897,7 +959,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         MaterialPageRoute(
                           builder: (context) => GroupMediaScreen(
                             chatId: widget.chatId,
-                            groupName: widget.contact.name,
+                            groupName: widget.groupName ?? 'Group',
                           )
                         )
                       );
@@ -1022,6 +1084,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                child: Text(content, style: const TextStyle(fontSize: 12, color: Colors.black87), textAlign: TextAlign.center),
                              )
                            );
+
+                        }
+
+                        if (type == 'sticker') {
+                            return Align(
+                               alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                               child: StickerMessageWidget(message: data, isMe: isMe)
+                            );
                         }
 
                         return Align(
@@ -1160,6 +1230,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
+            
+            if (_isStickerPickerVisible)
+              SizedBox(
+                height: 250,
+                child: StickerPickerWidget(
+                   onStickerSelected: _sendSticker
+                )
+              ),
         ],
       ),
       ));

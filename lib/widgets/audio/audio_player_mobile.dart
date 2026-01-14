@@ -4,8 +4,13 @@ import 'package:audioplayers/audioplayers.dart';
 
 class CrossPlatformAudioPlayer extends StatefulWidget {
   final String url;
+  final Color contentColor;
 
-  const CrossPlatformAudioPlayer({super.key, required this.url});
+  const CrossPlatformAudioPlayer({
+    super.key,
+    required this.url,
+    this.contentColor = const Color(0xFF54656F), // Default WhatsApp Gray
+  });
 
   @override
   State<CrossPlatformAudioPlayer> createState() => _CrossPlatformAudioPlayerState();
@@ -19,6 +24,7 @@ class _CrossPlatformAudioPlayerState extends State<CrossPlatformAudioPlayer> {
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<PlayerState>? _stateSubscription;
   StreamSubscription<Duration>? _durationSubscription;
+  bool _isSeeking = false;
 
   @override
   void initState() {
@@ -47,7 +53,7 @@ class _CrossPlatformAudioPlayerState extends State<CrossPlatformAudioPlayer> {
 
     // Listen to position changes
     _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
-      if (mounted) {
+      if (mounted && !_isSeeking) {
         setState(() {
           _currentPosition = position;
         });
@@ -68,11 +74,7 @@ class _CrossPlatformAudioPlayerState extends State<CrossPlatformAudioPlayer> {
       await _audioPlayer.setSource(UrlSource(widget.url));
     } catch (e) {
       debugPrint("Mobile Audio Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Audio cannot be played on this device')),
-        );
-      }
+      // Don't show snackbar immediately on load as it might spam if multiple bubbles exist
     }
   }
 
@@ -84,49 +86,81 @@ class _CrossPlatformAudioPlayerState extends State<CrossPlatformAudioPlayer> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ElevatedButton.icon(
-          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-          label: Text(_isPlaying ? "Pause" : "Play"),
-          onPressed: _togglePlayPause,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF075E54), // WhatsApp Green
-            foregroundColor: Colors.white,
-          ),
-        ),
-        Slider(
-          min: 0,
-          max: _totalDuration.inMilliseconds.toDouble(),
-          value: _currentPosition.inMilliseconds.clamp(0, _totalDuration.inMilliseconds).toDouble(),
-          activeColor: const Color(0xFF075E54),
-          inactiveColor: Colors.grey[300],
-          onChanged: (value) async {
-            final position = Duration(milliseconds: value.toInt());
-            await _audioPlayer.seek(position);
-          },
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(_formatDuration(_currentPosition), style: const TextStyle(fontSize: 12)),
-              Text(_formatDuration(_totalDuration), style: const TextStyle(fontSize: 12)),
-            ],
-          ),
-        ),
-      ],
-    );
+  void _onSeekStart(double value) {
+    _isSeeking = true;
+  }
+
+  void _onSeekChanged(double value) {
+    setState(() {
+      _currentPosition = Duration(milliseconds: value.toInt());
+    });
+  }
+
+  void _onSeekEnd(double value) async {
+    _isSeeking = false;
+    final position = Duration(milliseconds: value.toInt());
+    await _audioPlayer.seek(position);
   }
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
     String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
-    return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    // If implementation needs hours:
+    // return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+     final durationMs = _totalDuration.inMilliseconds.toDouble();
+     final positionMs = _currentPosition.inMilliseconds.toDouble();
+     final safePosition = positionMs > durationMs ? durationMs : positionMs;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        GestureDetector(
+          onTap: _togglePlayPause,
+          child: Icon(
+            _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: widget.contentColor,
+            size: 32,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              trackHeight: 4,
+              thumbColor: widget.contentColor,
+              activeTrackColor: widget.contentColor,
+              inactiveTrackColor: widget.contentColor.withOpacity(0.3),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            ),
+            child: Slider(
+              min: 0,
+              max: durationMs > 0 ? durationMs : 1.0, 
+              value: safePosition.clamp(0, durationMs > 0 ? durationMs : 1.0),
+              onChangeStart: _onSeekStart,
+              onChanged: _onSeekChanged,
+              onChangeEnd: _onSeekEnd,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          _formatDuration(_currentPosition), 
+          style: TextStyle(
+            color: widget.contentColor, 
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          )
+        ),
+         const SizedBox(width: 4),
+      ],
+    );
   }
 }

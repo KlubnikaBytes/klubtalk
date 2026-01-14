@@ -5,7 +5,7 @@ const messageSchema = new mongoose.Schema({
     senderId: { type: String, ref: 'User', required: true },
     type: {
         type: String,
-        enum: ['text', 'image', 'voice', 'video', 'file'],
+        enum: ['text', 'image', 'voice', 'video', 'file', 'sticker'],
         default: 'text'
     },
     content: { type: String, required: true }, // Text or File Path

@@ -64,4 +64,12 @@ const searchController = require('../controllers/searchController');
 router.get('/search/global', verifyToken, searchController.globalSearch);
 router.get('/search/chat/:chatId', verifyToken, searchController.chatSearch);
 
+const statusController = require('../controllers/statusController');
+
+// --- STATUS ROUTES ---
+router.post('/status/create', verifyToken, statusController.createStatus);
+router.get('/status/feed', verifyToken, statusController.getFeed);
+router.post('/status/view', verifyToken, statusController.viewStatus);
+router.delete('/status/:statusId', verifyToken, statusController.deleteStatus);
+
 module.exports = router;

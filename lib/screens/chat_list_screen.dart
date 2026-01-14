@@ -14,6 +14,8 @@ import 'package:whatsapp_clone/utils/platform_helper.dart';
 
 import 'package:whatsapp_clone/services/search_service.dart';
 import 'package:whatsapp_clone/widgets/global_search_overlay.dart';
+import 'package:whatsapp_clone/screens/camera/universal_camera_screen.dart';
+import 'package:whatsapp_clone/screens/status/status_tab.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -46,7 +48,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     
     _searchController.addListener(_onSearchChanged);
   }
@@ -185,6 +187,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
               controller: _tabController,
               children: [
                  ChatListScreen(filter: 'all', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+                 const StatusTab(),
                  ChatListScreen(filter: 'unread', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
                  ChatListScreen(filter: 'favorites', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
               ],
@@ -214,7 +217,10 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
     return AppBar(
       title: const Text('Messaging App', style: TextStyle(fontWeight: FontWeight.bold)),
       actions: [
-        IconButton(icon: const Icon(Icons.camera_alt_outlined), onPressed: () {}),
+        IconButton(
+          icon: const Icon(Icons.camera_alt_outlined), 
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UniversalCameraScreen()))
+        ),
         IconButton(icon: const Icon(Icons.search), onPressed: _startSearch),
         PopupMenuButton<String>(
           onSelected: (value) {
@@ -252,7 +258,8 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
         controller: _tabController,
         indicatorColor: Colors.white,
         tabs: const [
-           Tab(text: 'All'),
+           Tab(text: 'Chats'),
+           Tab(text: 'Updates'),
            Tab(text: 'Unread'),
            Tab(text: 'Favorites'),
         ],
