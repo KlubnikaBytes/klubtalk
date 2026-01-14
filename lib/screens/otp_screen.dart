@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:whatsapp_clone/auth_wrapper.dart';
+import 'package:whatsapp_clone/layout/responsive_layout.dart';
+import 'package:whatsapp_clone/screens/chat_list_screen.dart';
+import 'package:whatsapp_clone/screens/web_layout_screen.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class OtpScreen extends StatefulWidget {
-  final String verificationId;
   final String phoneNumber;
 
   const OtpScreen({
     super.key,
-    required this.verificationId,
     required this.phoneNumber,
   });
 
@@ -33,45 +32,23 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Create Credential
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: widget.verificationId,
-        smsCode: otp,
-      );
-
-      // Sign In
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-
-      // Check/Create User in Firestore
-      final user = userCredential.user;
-      if (user != null) {
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        
-        if (!userDoc.exists) {
-          // Create new user profile
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-            'uid': user.uid,
-            'phoneNumber': widget.phoneNumber,
-            'name': 'New User', // Can prompt for name later
-            'createdAt': FieldValue.serverTimestamp(),
-            'isOnline': true,
-          });
-        }
-      }
+      // Create Custom Session via Backend
+      await AuthService().verifyOtp(widget.phoneNumber, otp);
 
       if (mounted) {
+         // Navigate to Home
          Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          MaterialPageRoute(
+             builder: (context) => const ResponsiveLayout(
+                mobileScaffold: MobileChatLayout(),
+                webScaffold: WebLayoutScreen(),
+             )
+          ),
           (route) => false,
         );
       }
 
-    } on FirebaseAuthException catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invalid Code: ${e.message}')),
-      );
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(

@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:messaging_app/services/chat_service.dart';
 import 'package:messaging_app/services/media_upload_service.dart';
-import 'package:messaging_app/screens/chat_screen.dart';
-import 'package:messaging_app/models/contact.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:messaging_app/services/contact_service.dart';
-import 'package:messaging_app/screens/chat_list_screen.dart'; // Reuse logic if possible, or simple list
+import 'package:whatsapp_clone/screens/chat_screen.dart';
+import 'package:whatsapp_clone/models/contact.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/services/contact_service.dart';
+import 'package:whatsapp_clone/screens/chat_list_screen.dart'; // Reuse logic if possible, or simple list
 
 class ChatSelectionScreen extends StatefulWidget {
   final File mediaFile;
@@ -74,7 +74,7 @@ class _ChatSelectionScreenState extends State<ChatSelectionScreen> {
       // Actually, let's use a simpler approach: 
       // Upload -> Get URL -> Send Message
       
-      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      final currentUid = AuthService().currentUserId;
       if (currentUid == null) return;
       
       // Upload
@@ -152,7 +152,7 @@ class _ChatSelectionScreenState extends State<ChatSelectionScreen> {
                   final chat = _recentChats[index];
                   final chatId = chat['_id'] ?? chat['id'];
                   final isGroup = chat['isGroup'] == true;
-                  final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                  final currentUid = AuthService().currentUserId;
                   
                   // Setup Name/Avatar
                    String name = 'Chat';

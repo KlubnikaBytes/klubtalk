@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart';
 import 'package:whatsapp_clone/screens/new_chat_screen.dart';
@@ -398,7 +398,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       ]),
       builder: (context, child) {
         
-        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+        final currentUid = AuthService().currentUserId;
         
         // 1. Filter Logic
         final docs = _chats.where((chatData) {

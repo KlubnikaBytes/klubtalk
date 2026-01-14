@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class SearchService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   Future<Map<String, String>> _getHeaders() async {
-    final token = await _auth.currentUser?.getIdToken();
+    final token = AuthService().token;
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',

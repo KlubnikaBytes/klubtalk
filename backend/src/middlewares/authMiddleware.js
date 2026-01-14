@@ -1,6 +1,6 @@
-const { auth } = require('../config/firebase');
+const jwt = require('jsonwebtoken');
 
-const verifyToken = async (req, res, next) => {
+const verifyToken = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -10,8 +10,9 @@ const verifyToken = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
 
     try {
-        const decodedToken = await auth.verifyIdToken(token);
-        req.user = decodedToken;
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod');
+        req.uid = decoded.uid; // Set uid for controllers to use
+        req.user = decoded;    // Set full decoded object if needed
         next();
     } catch (error) {
         console.error('Error verifying token:', error);

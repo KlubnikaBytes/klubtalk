@@ -1,6 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:whatsapp_clone/config/api_config.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -15,8 +15,8 @@ class SocketService {
   bool isConnected = false;
 
   void initSocket() {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
+    final currentUserId = AuthService().currentUserId;
+    if (currentUserId == null) return;
 
     // ApiConfig.baseUrl usually is http://localhost:5000/api or just base
     // We need the root domain for socket
@@ -38,7 +38,7 @@ class SocketService {
       print('Socket Connected: ${socket!.id}');
       isConnected = true;
       // Join User Room
-      socket!.emit('join-user', currentUser.uid);
+      socket!.emit('join-user', currentUserId);
     });
 
     socket!.onDisconnect((_) {

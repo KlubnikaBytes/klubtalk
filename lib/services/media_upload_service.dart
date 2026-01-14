@@ -1,20 +1,29 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart'; // for kIsWeb
+import 'dart:typed_data'; // for Uint8List
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:whatsapp_clone/config/api_config.dart';
-import 'package:mime/mime.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
+
+// Helper for mime extensions
+String? extensionFromMime(String mime) {
+  switch (mime) {
+    case 'image/jpeg': return 'jpg';
+    case 'image/png': return 'png';
+    case 'video/mp4': return 'mp4';
+    case 'audio/mpeg': return 'mp3';
+    case 'application/pdf': return 'pdf';
+    default: return null;
+  }
+}
 
 class MediaUploadService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-
   // Helper to get headers with Auth Token
   Future<Map<String, String>> _getHeaders() async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+    final token = AuthService().token;
+    if (token == null) throw Exception('User not authenticated');
     
-    final token = await user.getIdToken();
     return {
       'Authorization': 'Bearer $token',
       // Content-Type for multipart is handled automatically by MultipartRequest

@@ -3,12 +3,11 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/models/contact.dart' as app_contact;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
 
 class ContactService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Check Current Permission Status
   Future<PermissionStatus> getPermissionStatus() async {
@@ -31,7 +30,7 @@ class ContactService {
   // Fetch ALL Registered Users via API
   Future<List<UserModel>> getRegisteredUsers() async {
      try {
-       final token = await _auth.currentUser?.getIdToken();
+       final token = AuthService().token;
        if (token == null) return [];
 
        final response = await http.get(
@@ -43,7 +42,7 @@ class ContactService {
 
        if (response.statusCode == 200) {
          final List<dynamic> data = jsonDecode(response.body);
-         return data.map((item) => UserModel.fromMap(item, item['firebaseUid'] ?? '')).toList();
+         return data.map((item) => UserModel.fromMap(item, item['_id'] ?? '')).toList();
        }
        return [];
      } catch (e) {
@@ -54,7 +53,7 @@ class ContactService {
 
   // Add Contact via API
   Future<void> addContact(String name, String phone) async {
-    final token = await _auth.currentUser?.getIdToken();
+    final token = AuthService().token;
     if (token == null) throw Exception('Not authenticated');
 
     final url = Uri.parse('${ApiConfig.baseUrl}/contacts/add');

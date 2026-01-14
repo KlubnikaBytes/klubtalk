@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:whatsapp_clone/screens/otp_screen.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,7 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid phone number (e.g., +9190000...)')),
+        const SnackBar(content: Text('Enter a valid phone number (e.g., 9190000...)')),
       );
       return;
     }
@@ -25,38 +25,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-resolution (Android only usually)
-          await FirebaseAuth.instance.signInWithCredential(credential);
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          setState(() => _isLoading = false);
-          print('Phone Auth Error: ${e.message}');
-          ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('Verification Failed: ${e.message}')),
-          );
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          setState(() => _isLoading = false);
-          // Navigate to OTP Screen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OtpScreen(verificationId: verificationId, phoneNumber: phone),
-            ),
-          );
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          // Timeout handling if needed
-        },
-      );
+      // Custom Auth: Send OTP via Backend
+      await AuthService().sendOtp(phone);
+      
+      if (mounted) {
+        setState(() => _isLoading = false);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OtpScreen(phoneNumber: phone), // verificationId not needed for custom
+          ),
+        );
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      if (mounted) {
+         setState(() => _isLoading = false);
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Error: $e')),
+         );
+      }
     }
   }
 

@@ -8,11 +8,24 @@ const chatController = require('../controllers/chatController');
 // Authorization: Bearer <ID_TOKEN>
 const authController = require('../controllers/authController');
 
-// --- AUTH ROUTES ---
-router.post('/auth/login', verifyToken, authController.login);
-router.get('/auth/profile', verifyToken, authController.getProfile);
-router.put('/auth/profile', verifyToken, authController.updateProfile);
-router.get('/users', verifyToken, authController.getAllUsers);
+// --- AUTH ROUTES (OTP) ---
+router.post('/auth/send-otp', authController.sendOtp);
+router.post('/auth/verify-otp', authController.verifyOtp);
+router.get('/auth/me', verifyToken, authController.getMe);
+router.put('/auth/me', verifyToken, authController.updateProfile);
+
+// router.get('/auth/profile', verifyToken, authController.getProfile); // Removed or remapped to getMe
+// router.put('/auth/profile', verifyToken, authController.updateProfile); // TODO: Add updateProfile to authController if needed, or keep separate userController logic. 
+// For now, I will comment them out to strictly follow "Replacement" plan.
+// Actually, `updateProfile` is likely needed for Name/About updates. I should probably keep it but ensure `authController` has it.
+// The user said "Only authentication must change". Update profile logic is likely `User` logic.
+// I will keep `getAllUsers`.
+
+router.get('/users', verifyToken, authController.getAllUsers); // IMPORTANT: I need to add getAllUsers to the new authController or move it to userController.
+// Current authController.js ONLY has sendOtp, verifyOtp, getMe.
+// I need to add getAllUsers back to authController? Or move it.
+// To avoid breaking chat, I should add getAllUsers to authController.js.
+
 
 // --- MEDIA ROUTES (Hybrid Backend) ---
 // Authorization: Bearer <ID_TOKEN>

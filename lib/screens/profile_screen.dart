@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/models/project_models.dart' as model; // Alias to avoid conflict if any
 import 'package:whatsapp_clone/services/media_upload_service.dart';
@@ -23,8 +23,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _avatarUrl = widget.user.avatarUrl;
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser != null && currentUser.uid == widget.user.id) {
+    final currentUserId = AuthService().currentUserId;
+    if (currentUserId != null && currentUserId == widget.user.id) {
       _isMe = true;
     }
   }

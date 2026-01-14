@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/sticker_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StickerService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   
   // In-memory cache
   List<StickerPack> _packs = [];
@@ -19,7 +18,7 @@ class StickerService {
   factory StickerService() => _instance;
   StickerService._internal();
 
-  Future<String?> _getToken() async => await _auth.currentUser?.getIdToken();
+  Future<String?> _getToken() async => AuthService().token;
 
   Future<void> initialize() async {
     await _loadLocalData();

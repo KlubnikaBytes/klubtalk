@@ -3,14 +3,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/status_model.dart';
 
 class StatusService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<String?> _getToken() async => await _auth.currentUser?.getIdToken();
+  Future<String?> _getToken() async => AuthService().token;
 
   Future<void> createStatus(String type, String content, {String? caption, String? color}) async {
     final token = await _getToken();

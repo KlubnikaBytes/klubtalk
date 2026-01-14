@@ -8,9 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:messaging_app/screens/camera/chat_selection_screen.dart';
 import 'package:messaging_app/models/contact.dart';
 import 'package:messaging_app/services/chat_service.dart';
-import 'package:messaging_app/services/media_upload_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:messaging_app/screens/chat_screen.dart';
+import 'package:whatsapp_clone/services/media_upload_service.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/screens/chat_screen.dart';
 
 class UniversalMediaPreviewScreen extends StatefulWidget {
   final File file;
@@ -111,9 +111,9 @@ class _UniversalMediaPreviewScreenState extends State<UniversalMediaPreviewScree
 
        // 2. Send Message
        print("DEBUG: Getting currentUser...");
-       final user = FirebaseAuth.instance.currentUser;
-       print("DEBUG: User: $user");
-       final token = await user?.getIdToken();
+       final userId = AuthService().currentUserId;
+       print("DEBUG: User ID: $userId");
+       final token = AuthService().token;
        print("DEBUG: Token retrieved (length): ${token?.length}");
        
        print("DEBUG: Parsing messages endpoint: ${ApiConfig.messagesEndpoint}");

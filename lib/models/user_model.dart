@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   final String uid;
@@ -7,7 +7,7 @@ class UserModel {
   final String about;
   final String profilePhotoUrl;
   final bool isOnline;
-  final Timestamp? lastSeen;
+  final DateTime? lastSeen;
   
   // Privacy Settings (0: Everyone, 1: Contacts, 2: Nobody)
   final int lastSeenVisibility;
@@ -33,13 +33,13 @@ class UserModel {
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map, String uid) {
-    // Handle lastSeen as Timestamp (Firestore) or String (Backend JSON)
-    Timestamp? lastSeenVal;
+    // Handle lastSeen as String (Backend JSON) or DateTime
+    DateTime? lastSeenVal;
     final lastSeenRaw = map['lastSeen'];
-    if (lastSeenRaw is Timestamp) {
-      lastSeenVal = lastSeenRaw;
-    } else if (lastSeenRaw is String) {
-      lastSeenVal = Timestamp.fromDate(DateTime.parse(lastSeenRaw));
+    if (lastSeenRaw is String) {
+      lastSeenVal = DateTime.tryParse(lastSeenRaw);
+    } else if (lastSeenRaw is int) {
+       lastSeenVal = DateTime.fromMillisecondsSinceEpoch(lastSeenRaw);
     }
     
     return UserModel(
@@ -66,7 +66,7 @@ class UserModel {
       'about': about,
       'profilePhotoUrl': profilePhotoUrl,
       'isOnline': isOnline,
-      'lastSeen': lastSeen,
+      'lastSeen': lastSeen?.toIso8601String(),
       'lastSeenVisibility': lastSeenVisibility,
       'profilePhotoVisibility': profilePhotoVisibility,
       'aboutVisibility': aboutVisibility,

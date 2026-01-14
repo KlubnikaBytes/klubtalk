@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
@@ -367,7 +367,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
                 );
              } catch (e) { matchedUser = null; }
              
-             if (matchedUser != null && matchedUser.uid != _chatService.auth.currentUser?.uid) {
+             if (matchedUser != null && matchedUser.uid != AuthService().currentUserId) {
                 matchedContacts.add({'contact': contact, 'user': matchedUser});
              } else {
                 inviteContacts.add(contact);
@@ -419,7 +419,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
           // 4. All Registered Users (Unmatched)
           // Ensure we don't duplicate
           final matchedIds = matchedContacts.map((m) => (m['user'] as UserModel).uid).toSet();
-          final unmatchedUsers = registeredUsers.where((u) => !matchedIds.contains(u.uid) && u.uid != _chatService.auth.currentUser?.uid).toList();
+          final unmatchedUsers = registeredUsers.where((u) => !matchedIds.contains(u.uid) && u.uid != AuthService().currentUserId).toList();
 
           if (unmatchedUsers.isNotEmpty) {
             listItems.add(const Padding(
@@ -476,8 +476,8 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
   }
 
   Widget _buildWebList(List<UserModel> users) {
-     final currentUser = _chatService.auth.currentUser;
-     final otherUsers = users.where((u) => u.uid != currentUser?.uid).toList();
+     final currentUserId = AuthService().currentUserId;
+     final otherUsers = users.where((u) => u.uid != currentUserId).toList();
      // Web Implementation of Multi-Select omitted for brevity unless requested, focusing on mobile as per context.
      // But logic should be similar.
      return ListView(
@@ -515,7 +515,4 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
       onTap: onTap,
     );
   }
-}
-extension on ChatService {
-  get auth => FirebaseAuth.instance;
 }

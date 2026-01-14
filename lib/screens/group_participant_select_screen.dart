@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/screens/group_info_screen.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
-import 'package:whatsapp_clone/services/chat_service.dart'; // For Auth
+import 'package:whatsapp_clone/services/chat_service.dart'; // For Groups
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
 class GroupParticipantSelectScreen extends StatefulWidget {
@@ -16,7 +16,7 @@ class GroupParticipantSelectScreen extends StatefulWidget {
 
 class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScreen> {
   final ContactService _contactService = ContactService();
-  final ChatService _chatService = ChatService(); // For Auth and Groups
+  final ChatService _chatService = ChatService(); // For Groups
   
   List<UserModel> _contacts = [];
   bool _isLoading = true;
@@ -31,7 +31,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
   Future<void> _fetchContacts() async {
     try {
       List<UserModel> items = [];
-      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      final currentUid = AuthService().currentUserId;
 
       if (widget.isCommunity) {
          // Fetch Groups

@@ -1,18 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/services/media_upload_service.dart';
 
 class UserService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  String get currentUid => _auth.currentUser!.uid;
+  String get currentUid => AuthService().currentUserId ?? '';
 
   Future<Map<String, String>> _getHeaders() async {
-    final token = await _auth.currentUser?.getIdToken();
+    final token = AuthService().token;
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
@@ -28,7 +27,7 @@ class UserService {
   Future<UserModel> _fetchUserProfile() async {
     try {
       final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+        Uri.parse('${ApiConfig.baseUrl}/auth/me'),
         headers: await _getHeaders(),
       );
 
@@ -50,7 +49,7 @@ class UserService {
   // Update Profile Info (Name, About)
   Future<void> updateProfile({String? name, String? about}) async {
     await http.put(
-      Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+      Uri.parse('${ApiConfig.baseUrl}/auth/me'),
       headers: await _getHeaders(),
       body: jsonEncode({
         if (name != null) 'name': name,
@@ -89,7 +88,7 @@ class UserService {
   Future<void> setOnlineStatus(bool isOnline) async {
      try {
        await http.put(
-        Uri.parse('${ApiConfig.baseUrl}/auth/profile'),
+        Uri.parse('${ApiConfig.baseUrl}/auth/me'),
         headers: await _getHeaders(),
         body: jsonEncode({'isOnline': isOnline}),
       );

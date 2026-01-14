@@ -2,14 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/services/media_upload_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class ChatService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Helper to get headers with Auth Token
   Future<Map<String, String>> _getHeaders() async {
-    final token = await _auth.currentUser?.getIdToken();
+    final token = AuthService().token;
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
@@ -349,11 +348,11 @@ class ChatService {
   }
 
   Future<List<String>> getBlockedUsers() async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) return [];
+    final currentUserId = AuthService().currentUserId;
+    if (currentUserId == null) return [];
 
     final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/blocked-users/${currentUser.uid}'),
+      Uri.parse('${ApiConfig.baseUrl}/blocked-users/$currentUserId'),
       headers: await _getHeaders(),
     );
     

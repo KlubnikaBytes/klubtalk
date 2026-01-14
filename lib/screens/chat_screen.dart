@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:whatsapp_clone/utils/platform_helper.dart';
@@ -164,7 +164,7 @@ class _ChatScreenState extends State<ChatScreen> {
      final optimisticMessage = {
        '_id': tempId,
        'chatId': widget.chatId,
-       'senderId': FirebaseAuth.instance.currentUser?.uid,
+       'senderId': AuthService().currentUserId,
        'type': 'sticker',
        'content': sticker.imageUrl,
        'timestamp': DateTime.now().toIso8601String(),
@@ -248,7 +248,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final optimisticMessage = {
       '_id': tempId,
       'chatId': widget.chatId,
-      'senderId': FirebaseAuth.instance.currentUser?.uid,
+      'senderId': AuthService().currentUserId,
       'type': 'text',
       'content': text,
       'timestamp': DateTime.now().toIso8601String(),
@@ -1058,7 +1058,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         final reversedIndex = _messages.length - 1 - index;
                         final data = _messages[reversedIndex];
                         
-                        final isMe = data['senderId'] == FirebaseAuth.instance.currentUser?.uid;
+                        final isMe = data['senderId'] == AuthService().currentUserId;
                         final type = data['type'] ?? 'text';
                         final content = data['content'] ?? data['text'] ?? '';
                         final mimeType = (data['mimeType'] ?? '').toString().toLowerCase();
