@@ -1,27 +1,22 @@
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
-    chatId: { type: String, ref: 'Chat', required: true },
-    senderId: { type: String, ref: 'User', required: true },
+    chatId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat', required: true },
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    content: { type: String, default: '' },
     type: {
         type: String,
-        enum: ['text', 'image', 'voice', 'video', 'file', 'sticker'],
+        enum: ['text', 'image', 'video', 'audio', 'file', 'sticker'],
         default: 'text'
     },
-    content: { type: String, required: true }, // Text or File Path
+    mediaUrl: { type: String },
+    thumbnailUrl: { type: String },
     status: {
         type: String,
-        enum: ['sent', 'delivered', 'read'],
+        enum: ['sent', 'delivered', 'seen'],
         default: 'sent'
     },
-    timestamp: { type: Date, default: Date.now },
-    duration: { type: Number }, // Extra for voice
-    expiresAt: { type: Date, index: true }, // Auto-delete time
-    previewUrl: { type: String },
-    originalUrl: { type: String },
-    mime: { type: String },
+    createdAt: { type: Date, default: Date.now }
 });
-
-messageSchema.index({ content: 'text' });
 
 module.exports = mongoose.model('Message', messageSchema);

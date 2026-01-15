@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    firebaseUid: { type: String, required: true, unique: true },
-    phone: { type: String, required: true },
+    firebaseUid: { type: String, unique: true, sparse: true }, // Optional now
+    phone: { type: String, required: true, unique: true },
     name: { type: String, default: '' },
     about: { type: String, default: 'Hey there! I am using WhatsApp.' },
     avatar: { type: String, default: '' }, // URL/Path on VPS

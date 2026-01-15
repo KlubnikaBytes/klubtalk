@@ -10,6 +10,10 @@ class MessageModel {
     required this.text,
     required this.isSentByMe,
     required this.timestamp,
+    required this.timestamp,
     required this.isRead,
+    this.status = 'sent',
   });
+  
+  final String status;
 }

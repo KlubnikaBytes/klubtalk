@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/models/project_models.dart' as model; // Alias to avoid conflict if any
-import 'package:whatsapp_clone/services/media_upload_service.dart';
+import 'package:whatsapp_clone/services/user_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final model.User user;
@@ -41,14 +40,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading profile photo...')));
 
     try {
-      final uploadService = MediaUploadService();
-      final newUrl = await uploadService.uploadProfilePhoto(image.path);
-
-      // Update Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.user.id)
-          .update({'profilePhotoUrl': newUrl});
+      final userService = UserService();
+      // updateProfilePhoto handles upload AND backend update
+      final newUrl = await userService.updateProfilePhoto(image.path);
 
       setState(() {
         _avatarUrl = newUrl;

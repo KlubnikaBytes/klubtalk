@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart';
 import 'package:whatsapp_clone/screens/new_chat_screen.dart';
@@ -258,7 +259,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
         controller: _tabController,
         indicatorColor: Colors.white,
         tabs: const [
-           Tab(text: 'Chats'),
+           Tab(text: 'Conversations'),
            Tab(text: 'Updates'),
            Tab(text: 'Unread'),
            Tab(text: 'Favorites'),
@@ -312,15 +313,47 @@ class _ChatListScreenState extends State<ChatListScreen> {
   bool _isLoading = true;
   Timer? _pollingTimer;
 
+  StreamSubscription? _socketSub;
+
   @override
   void initState() {
     super.initState();
     _loadChats();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) => _loadChats(updateLoading: false));
+    // Real-time updates via Socket
+    _socketSub = SocketService().messageStream.listen((data) {
+        // When a new message arrives, we can either re-fetch all chats 
+        // OR manually move the chat to top. 
+        // For accurate sorting and "lastMessage" details, re-fetching is safest unless we optimize.
+        // Optimization: Update local list.
+        _handleNewMessageSocket(data);
+    });
+  }
+
+  void _handleNewMessageSocket(Map<String, dynamic> messageData) {
+      // Find chat
+      final chatId = messageData['chatId'];
+      final existingIndex = _chats.indexWhere((c) => (c['_id'] ?? c['id']) == chatId);
+      
+      if (existingIndex != -1) {
+          if (mounted) {
+             setState(() {
+                var chat = _chats.removeAt(existingIndex);
+                chat['lastMessage'] = messageData; // Update content
+                chat['lastMessageTime'] = messageData['createdAt'] ?? DateTime.now().toIso8601String();
+                // TODO: Update unread count if not in this chat
+                // For simplified "WhatsApp Clone" sync:
+                _chats.insert(0, chat); // Move to top
+             });
+          }
+      } else {
+          // New chat? Re-fetch to be safe
+          _loadChats(updateLoading: false);
+      }
   }
 
   @override
   void dispose() {
+    _socketSub?.cancel();
     _pollingTimer?.cancel();
     super.dispose();
   }
@@ -492,10 +525,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
             final chatData = docs[chatIndex];
             final chatId = chatData['_id'] ?? chatData['id'];
             
-            final participants = List<String>.from(chatData['participants'] ?? []);
-            final participantsDetails = List<Map<String, dynamic>>.from(chatData['participantsDetails'] ?? []);
+            final rawParticipants = chatData['participants'] as List<dynamic>? ?? [];
+            final participantsDetails = rawParticipants.whereType<Map<String, dynamic>>().toList();
+            
+            final participants = rawParticipants.map((p) {
+               if (p is Map) return (p['_id'] ?? '').toString();
+               return p.toString();
+            }).toList();
             
             final isFavorite = (chatData['isFavoriteSelf'] as bool?) ?? false;
+            
+            // ... (keep existing mute logic if matching lines, or I can just target the block above)
+            
             bool isMuted = false;
             if (chatData['muteUntil'] is Map && currentUid != null) {
                 final untilVal = chatData['muteUntil'][currentUid];
@@ -524,7 +565,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                  avatarUrl = '';
             } else {
                  final peerId = participants.firstWhere((id) => id != currentUid, orElse: () => 'Unknown');
-                 final peerData = participantsDetails.firstWhere((u) => u['firebaseUid'] == peerId, orElse: () => {});
+                 // Match by _id or firebaseUid
+                 final peerData = participantsDetails.firstWhere(
+                    (u) => (u['_id'] == peerId || u['firebaseUid'] == peerId), 
+                    orElse: () => {}
+                 );
                  name = peerData['name'] ?? 'Unknown';
                  avatarUrl = peerData['avatar'] ?? '';
                  if (avatarUrl.isEmpty) avatarUrl = 'https://ui-avatars.com/api/?name=$name';

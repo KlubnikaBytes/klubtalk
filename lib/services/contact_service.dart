@@ -86,9 +86,39 @@ class ContactService {
   }
 
   // Normalize Phone Number helper
+  // Normalize phone number to +91XXXXXXXXXX
   String normalizePhoneNumber(String phone) {
-    // Remove spaces, dashes, parentheses
-    String cleaned = phone.replaceAll(RegExp(r'[\s-\(\)]'), '');
-    return cleaned;
+    String p = phone.replaceAll(RegExp(r'\D'), '');
+    if (p.length == 10) return '+91$p';
+    if (p.length == 12 && p.startsWith('91')) return '+$p';
+    if (p.length > 10 && p.startsWith('0')) return '+91${p.substring(1)}';
+    return '+$p';
+  }
+
+  // New Sync Method
+  Future<Map<String, dynamic>> syncContacts(List<String> phones) async {
+    try {
+      final token = await AuthService().storage.read(key: 'jwt_token');
+      // Normalize all
+      final normalized = phones.map((p) => normalizePhoneNumber(p)).toList();
+      
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/contacts/sync'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'contacts': normalized}),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to sync contacts');
+      }
+    } catch (e) {
+      print('Sync Error: $e');
+      rethrow;
+    }
   }
 }

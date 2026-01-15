@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:whatsapp_clone/utils/platform_helper.dart';
@@ -60,9 +61,16 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = true;
   Timer? _pollingTimer;
   bool _isTyping = false;
+  bool _isPeerTyping = false; // New typing state
+  bool _isPeerOnline = false; // New online state
   bool _isEmojiPickerVisible = false;
   bool _isStickerPickerVisible = false;
   Set<String> _blockedUserIds = {};
+  
+  // Socket Subscriptions
+  StreamSubscription? _messageSub;
+  StreamSubscription? _typingSub;
+  StreamSubscription? _onlineSub;
 
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
 
@@ -82,14 +90,21 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _loadMessages();
     _checkBlockStatus();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-       _loadMessages(updateLoading: false);
-    });
+    _setupSocketListeners(); // Listen to socket
+    SocketService().markSeen(widget.chatId); // Mark chat as seen on open
+    if (!widget.isGroup) SocketService().checkOnline(widget.peerId); // Check initial online status
 
     _messageController.addListener(() {
       setState(() {
         _isTyping = _messageController.text.trim().isNotEmpty;
       });
+      
+      // Emit Typing Event
+      if (_isTyping) {
+        SocketService().sendTyping(widget.chatId, widget.peerId);
+      } else {
+        SocketService().sendStopTyping(widget.chatId, widget.peerId); 
+      }
     });
 
     _focusNode.addListener(() {
@@ -102,9 +117,90 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _setupSocketListeners() {
+    final socketService = SocketService();
+    
+    // 1. Messages
+    _messageSub = socketService.messageStream.listen((data) {
+       // Check if message belongs to this chat
+       if (data['chatId'] == widget.chatId) {
+          // Avoid duplicates if we handled optimistic UI
+          // Check tempId or _id
+          final existingIndex = _messages.indexWhere((m) => 
+              (data['tempId'] != null && m['_id'] == data['tempId']) || m['_id'] == data['_id']
+          );
+
+          if (existingIndex != -1) {
+             setState(() {
+               _messages[existingIndex] = data; // Update (e.g. status changes or real ID replacement)
+             });
+          } else {
+             setState(() {
+               _messages.insert(0, data);
+             });
+             _scrollToBottom();
+          }
+       }
+    });
+
+    // 2. Typing
+    _typingSub = socketService.typingStream.listen((data) {
+       if (data['chatId'] == widget.chatId && data['userId'] == widget.peerId) {
+          if (mounted) {
+            setState(() {
+              _isPeerTyping = data['isTyping'] ?? false;
+            });
+          }
+       }
+    });
+
+    // 3. Online Status (Global or Specific)
+    _onlineSub = socketService.onlineStatusStream.listen((data) {
+       if (data['userId'] == widget.peerId) {
+          if (mounted) {
+            setState(() {
+               _isPeerOnline = data['isOnline'] ?? false;
+            });
+          }
+       }
+    });
+
+    // 4. Delivery Status (Double Tick)
+    socketService.deliveryStatusStream.listen((data) {
+       // data: { messageId: '...', userId: '...' }
+       if (mounted) {
+         setState(() {
+           final index = _messages.indexWhere((m) => m['_id'] == data['messageId']);
+           if (index != -1) {
+             _messages[index]['status'] = 'delivered';
+           }
+         });
+       }
+    });
+
+    // 5. Seen Status (Blue Tick)
+    socketService.seenStatusStream.listen((data) {
+       // data: { chatId: '...', userId: '...' }
+       if (data['chatId'] == widget.chatId) {
+          if (mounted) {
+            setState(() {
+              // Mark all my messages as seen (since peer read them)
+              for (var m in _messages) {
+                 if (m['senderId'] == AuthService().currentUserId) {
+                    m['status'] = 'seen';
+                 }
+              }
+            });
+          }
+       }
+    });
+  }
+
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _messageSub?.cancel();
+    _typingSub?.cancel();
+    _onlineSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -261,8 +357,19 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
     
     try {
-      await _chatService.sendMessage(widget.chatId, text);
-      _loadMessages(updateLoading: false);
+      // Use ChatService which now routes to Socket if connected
+      // We pass tempId if we were calling socket directly, but ChatService.sendMessage signature 
+      // might generally not support it unless we changed it?
+      // Wait, I updated sendMessage in ChatService to use SocketService.sendMessage.
+      // SocketService.sendMessage accepts tempId.
+      // ChatService.sendMessage currently only takes (chatId, text, type). 
+      // I should update ChatService.sendMessage to take tempId OR just rely on content matching?
+      // Content matching is risky. Better to add tempId to ChatService.
+      // For now, I'll update ChatService to accept optional tempId.
+      await _chatService.sendMessage(widget.chatId, text, tempId: tempId);
+      
+      // No need to reload messages if socket works, as 'message_sent' or 'new_message' will update it.
+      // _loadMessages(updateLoading: false); 
     } catch (e) {
       if(mounted) {
          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
@@ -889,8 +996,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
                   if (!widget.isGroup && widget.contact != null)
-                    Text(widget.contact!.isOnline ? 'Online' : 'Offline', 
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+                    _isPeerTyping 
+                    ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFDCF8C6))) // WhatsApp Greenish
+                    : Text(_isPeerOnline ? 'Online' : 'Offline', 
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
                 ],
               ),
             ),
@@ -1180,7 +1289,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                     if (isMe) ...[
                                       const SizedBox(width: 4),
-                                      const Icon(Icons.done_all, size: 14, color: Colors.white70)
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        (data['status'] == 'seen' || data['status'] == 'delivered') 
+                                            ? Icons.done_all 
+                                            : Icons.done,
+                                        size: 14, 
+                                        color: data['status'] == 'seen' 
+                                            ? const Color(0xFF53BDEB) 
+                                            : Colors.white70
+                                      )
                                     ]
                                   ],
                                 )

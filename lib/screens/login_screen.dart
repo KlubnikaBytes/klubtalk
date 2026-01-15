@@ -15,9 +15,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _verifyPhone() async {
     final phone = _phoneController.text.trim();
-    if (phone.isEmpty || phone.length < 10) {
+    if (phone.isEmpty || phone.length != 10) { // WhatsApp style: strict 10 digits
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid phone number (e.g., 9190000...)')),
+        const SnackBar(content: Text('Please enter a valid 10-digit phone number')),
       );
       return;
     }
@@ -25,15 +25,16 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Custom Auth: Send OTP via Backend
-      await AuthService().sendOtp(phone);
+      // Force +91
+      final fullPhone = '+91$phone';
+      await AuthService().sendOtp(fullPhone);
       
       if (mounted) {
         setState(() => _isLoading = false);
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => OtpScreen(phoneNumber: phone), // verificationId not needed for custom
+            builder: (context) => OtpScreen(phoneNumber: fullPhone), 
           ),
         );
       }
@@ -50,42 +51,65 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enter Your Phone Number')),
+      appBar: AppBar(
+        title: const Text('Enter Your Phone Number'),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black, // or purple
+        centerTitle: true,
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              'Messaging App will send an SMS message to verify your phone number.',
+              'Messaging App will need to verify your phone number.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 20),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number',
-                hintText: '+1 555 123 4567',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF9575CD),
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: _verifyPhone,
-                      child: const Text('Next'),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 60,
+                  child: TextField(
+                    enabled: false,
+                    decoration: InputDecoration(
+                       hintText: '+91',
+                       contentPadding: EdgeInsets.all(8),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 10,
+                    decoration: const InputDecoration(
+                      hintText: 'phone number',
+                      counterText: '', // Hide length counter
                     ),
                   ),
+                ),
+              ],
+            ),
+             const Spacer(),
+             SizedBox(
+               width: 90, 
+               child: _isLoading
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF9575CD),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: _verifyPhone,
+                    child: const Text('NEXT'),
+                  ),
+             ),
+             const SizedBox(height: 40),
           ],
         ),
       ),

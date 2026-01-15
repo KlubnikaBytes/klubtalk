@@ -3,6 +3,7 @@ import 'package:whatsapp_clone/layout/responsive_layout.dart';
 import 'package:whatsapp_clone/screens/chat_list_screen.dart';
 import 'package:whatsapp_clone/screens/web_layout_screen.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/screens/auth/user_info_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -33,20 +34,31 @@ class _OtpScreenState extends State<OtpScreen> {
 
     try {
       // Create Custom Session via Backend
-      await AuthService().verifyOtp(widget.phoneNumber, otp);
+      final data = await AuthService().verifyOtp(widget.phoneNumber, otp);
+      final bool isNewUser = data['isNewUser'] == true;
 
       if (mounted) {
-         // Navigate to Home
-         Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-             builder: (context) => const ResponsiveLayout(
-                mobileScaffold: MobileChatLayout(),
-                webScaffold: WebLayoutScreen(),
-             )
-          ),
-          (route) => false,
-        );
+         if (isNewUser) {
+           Navigator.pushAndRemoveUntil(
+             context,
+             MaterialPageRoute(
+               builder: (context) => UserInfoScreen(phoneNumber: widget.phoneNumber),
+             ),
+             (route) => false,
+           );
+         } else {
+           // Navigate to Home
+           Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+               builder: (context) => const ResponsiveLayout(
+                  mobileScaffold: MobileChatLayout(),
+                  webScaffold: WebLayoutScreen(),
+               )
+            ),
+            (route) => false,
+          );
+         }
       }
 
     } catch (e) {

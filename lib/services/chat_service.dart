@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/services/media_upload_service.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 
 class ChatService {
 
@@ -21,13 +22,15 @@ class ChatService {
       final response = await http.post(
         Uri.parse('${ApiConfig.chatsEndpoint}/private'),
         headers: await _getHeaders(),
-        body: jsonEncode({'participantId': otherUserId}),
+        body: jsonEncode({'peerId': otherUserId}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        print("✅ createOrGetChat Success: ${data['chatId']}");
-        return data['chatId'];
+        final chatId = data['chatId'] ?? data['_id'];
+        print("✅ createOrGetChat Success: $chatId");
+        if (chatId == null) throw Exception('Server returned null chatId');
+        return chatId;
       } else {
         print("❌ createOrGetChat Failed: ${response.statusCode} - ${response.body}");
         throw Exception('Failed to create chat: ${response.body}');
@@ -39,8 +42,17 @@ class ChatService {
   }
 
   // Send Text Message
-  Future<void> sendMessage(String chatId, String text, {String type = 'text'}) async {
-    await _sendMessageToBackend(chatId, text, type);
+  Future<void> sendMessage(String chatId, String text, {String type = 'text', String? tempId}) async {
+    // Determine if we should use Socket or REST
+    // For text, Socket is preferred for speed.
+    if (SocketService().isConnected) {
+       SocketService().sendMessage(chatId, text, type, tempId: tempId);
+       // Note: We won't get a full Message object back immediately until the ack or 'new_message' event.
+       // The UI should handle optimistic updates.
+    } else {
+       // Fallback to REST if socket disconnected
+       await _sendMessageToBackend(chatId, text, type);
+    }
   }
 
   // Send Sticker Message
@@ -157,7 +169,7 @@ class ChatService {
         }),
       );
 
-      if (response.statusCode != 201) {
+      if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Failed to send message: ${response.body}');
       }
     } catch (e) {
@@ -208,7 +220,7 @@ class ChatService {
 
     if (response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      return data['chatId'];
+      return data['chatId'] ?? data['_id'];
     } else {
       throw Exception('Failed to create group: ${response.body}');
     }

@@ -69,9 +69,10 @@ exports.verifyOtp = async (req, res) => {
             isNewUser = true;
             user = new User({
                 phone,
-                name: 'User ' + phone.slice(-4), // Default name
-                about: 'Hey there! I am using Messaging App.',
-                isRegistered: true
+                name: '', // Empty name triggers profile setup on frontend
+                about: 'Hey there! I am using WhatsApp.',
+                isRegistered: true,
+                // firebaseUid: 'optional_or_removed' 
             });
             await user.save();
         }

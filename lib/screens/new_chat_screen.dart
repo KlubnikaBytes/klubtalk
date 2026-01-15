@@ -90,38 +90,55 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
     setState(() => _isLoading = true);
     
     try {
-      // 1. Fetch Registered Users (Parallel)
-      final usersFuture = _contactService.getRegisteredUsers();
-      
-      // 2. Fetch Groups (Parallel)
+      // 1. Fetch Groups (Parallel)
       final chatsFuture = _chatService.getMyChats();
       
-      // 3. Fetch Device Contacts (Parallel)
-      // Only fetch if permission granted (check again to be safe/consistent)
-      Future<List<Contact>> contactsFuture;
+      // 2. Fetch Device Contacts if permission granted
+      List<Contact> deviceContacts = [];
       if (!kIsWeb) {
           final status = await _contactService.getPermissionStatus();
            if (status.isGranted) {
-               contactsFuture = _contactService.getDeviceContacts();
-          } else {
-               contactsFuture = Future.value(<Contact>[]);
+               deviceContacts = await _contactService.getDeviceContacts();
           }
-      } else {
-          contactsFuture = Future.value(<Contact>[]);
       }
 
-      final results = await Future.wait([usersFuture, chatsFuture, contactsFuture]);
-      
-      final users = results[0] as List<UserModel>;
-      final chats = results[1] as List<Map<String, dynamic>>;
-      final contacts = results[2] as List<Contact>; // Cast to flutter_contacts.Contact
+      // 3. Sync Contacts with Backend
+      List<UserModel> registeredUsers = [];
+      List<String> unregisteredPhones = [];
+
+      try {
+          if (deviceContacts.isNotEmpty) {
+              final phones = deviceContacts
+                  .expand((c) => c.phones.map((p) => p.number))
+                  .toList();
+              
+              if (phones.isNotEmpty) {
+                  final syncResult = await _contactService.syncContacts(phones);
+                  
+                  final List<dynamic> reg = syncResult['registered'];
+                  registeredUsers = reg.map((u) => UserModel.fromMap(u, u['_id'])).toList();
+                  
+                  // Unregistered phones returned from backend (normalized)
+                  final List<dynamic> unreg = syncResult['unregistered'];
+                  unregisteredPhones = unreg.cast<String>();
+              }
+          }
+      } catch (e) {
+          print('Sync warning: $e');
+      }
+
+      final chats = await chatsFuture;
       final groups = chats.where((c) => c['isGroup'] == true).toList();
 
       if (mounted) {
         setState(() {
-          _registeredUsers = users;
+          _registeredUsers = registeredUsers;
           _myGroups = groups;
-          _deviceContacts = contacts;
+          // Filter device contacts to only those who are NOT registered
+          // We can match by phone number to be precise, or just use the device list as source for invites
+          // Ideally, we show "Invite" for anyone not in registeredUsers.
+          // Let's store ALL device contacts, but mark them in the UI logic.
+          _deviceContacts = deviceContacts; 
           _isLoading = false;
         });
       }
@@ -353,25 +370,50 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
                }
           }
 
-          // 3. Matched Contacts
+          // 3. Matched Contacts (Registered)
           final matchedContacts = <Map<String, dynamic>>[];
-          final inviteContacts = <Contact>[];
+          final Set<String> matchedPhones = {};
           
+          for (var user in _registeredUsers) {
+              if (user.uid == AuthService().currentUserId) continue;
+              
+              // Find local contact name if possible
+              String displayName = user.name.isNotEmpty ? user.name : user.phoneNumber;
+              
+              // Try to find in device contacts to get real name
+              try {
+                  final contact = _deviceContacts.firstWhere((c) => 
+                      c.phones.any((p) => _contactService.normalizePhoneNumber(p.number) == user.phoneNumber)
+                  );
+                  displayName = contact.displayName;
+              } catch (_) {}
+
+              // Create app contact for consistent UI object
+              final appContact = app_contact.Contact(
+                  name: displayName,
+                  profileImage: user.profilePhotoUrl,
+                  isOnline: user.isOnline
+              );
+              
+              matchedContacts.add({
+                  'contact': app_contact.Contact(name: displayName, profileImage: user.profilePhotoUrl), // For list display mainly
+                  'user': user,
+                  'contactObject': appContact
+              });
+              matchedPhones.add(user.phoneNumber);
+          }
+
+          // 4. Invite Contacts (Unregistered)
+          final inviteContacts = <Contact>[];
           for (var contact in _deviceContacts) {
-             if (contact.phones.isEmpty) continue;
-             String phone = _contactService.normalizePhoneNumber(contact.phones.first.number);
-             UserModel? matchedUser;
-             try {
-                matchedUser = registeredUsers.firstWhere(
-                  (u) => _contactService.normalizePhoneNumber(u.phoneNumber).contains(phone) || phone.contains(_contactService.normalizePhoneNumber(u.phoneNumber)),
-                );
-             } catch (e) { matchedUser = null; }
-             
-             if (matchedUser != null && matchedUser.uid != AuthService().currentUserId) {
-                matchedContacts.add({'contact': contact, 'user': matchedUser});
-             } else {
-                inviteContacts.add(contact);
-             }
+              // Check if any of this contact's phones are registered
+              bool isRegistered = contact.phones.any((p) => 
+                  matchedPhones.contains(_contactService.normalizePhoneNumber(p.number))
+              );
+              
+              if (!isRegistered && contact.phones.isNotEmpty) {
+                  inviteContacts.add(contact);
+              }
           }
 
            if (matchedContacts.isNotEmpty) {
@@ -381,14 +423,14 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
              ));
              
              for (var item in matchedContacts) {
-                 final Contact c = item['contact'];
+                 final app_contact.Contact c = item['contact'];
                  final UserModel u = item['user'];
                  final String selectionKey = "user:${u.uid}";
                  final bool isSelected = _selectedIds.contains(selectionKey);
 
                  // Adapt to App Contact model
                  final appContact = app_contact.Contact(
-                     name: c.displayName,
+                     name: c.name,
                      profileImage: u.profilePhotoUrl,
                      isOnline: u.isOnline
                  );
@@ -405,7 +447,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
                               )
                          ]
                     ),
-                    title: Text(c.displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(u.about, maxLines: 1, overflow: TextOverflow.ellipsis),
                      trailing: widget.isMultiSelect ? Checkbox(
                            value: isSelected,
@@ -416,42 +458,10 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
              }
            }
 
-          // 4. All Registered Users (Unmatched)
-          // Ensure we don't duplicate
-          final matchedIds = matchedContacts.map((m) => (m['user'] as UserModel).uid).toSet();
-          final unmatchedUsers = registeredUsers.where((u) => !matchedIds.contains(u.uid) && u.uid != AuthService().currentUserId).toList();
-
-          if (unmatchedUsers.isNotEmpty) {
-            listItems.add(const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('All Registered Users', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-            ));
-
-            for (var u in unmatchedUsers) {
-               final String selectionKey = "user:${u.uid}";
-               final bool isSelected = _selectedIds.contains(selectionKey);
-
-               listItems.add(ListTile(
-                leading: Stack(
-                         children: [
-                           AvatarWidget(imageUrl: u.profilePhotoUrl, radius: 22),
-                           if (isSelected) 
-                              const Positioned(
-                                bottom: 0, right: 0, 
-                                child: CircleAvatar(radius: 10, backgroundColor: Colors.teal, child: Icon(Icons.check, size: 12, color: Colors.white))
-                              )
-                         ]
-                ),
-                title: Text(u.name.isEmpty ? u.phoneNumber : u.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(u.about, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: widget.isMultiSelect ? Checkbox(
-                           value: isSelected,
-                           onChanged: (v) => _onContactSelected({'type': 'user', 'id': u.uid, 'userObject': u})
-                ) : null,
-                onTap: () => _onContactSelected({'type': 'user', 'id': u.uid, 'userObject': u}),
-              ));
-            }
-          }
+          // 4. Unmatched Registered Users - REMOVED
+          // WhatsApp only shows contacts in your phone book.
+          // If you want to chat with someone not in contacts, you usually add them first.
+          // Code block for "All Registered Users" removed per requirements.
 
           // 5. Invite Section
            if (inviteContacts.isNotEmpty) {

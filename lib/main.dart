@@ -45,20 +45,24 @@ class _MyAppState extends State<MyApp> {
   void _initSocket() {
     try {
       final socketService = SocketService();
-      socketService.initSocket();
+      socketService.connect();
 
-      socketService.on('incoming-call', (data) {
-          if (navigatorKey.currentState != null) {
-            navigatorKey.currentState!.push(
-              MaterialPageRoute(
-                builder: (_) => IncomingCallScreen(
-                  callerName: "User ${data['from'].toString().substring(0, 5)}...",
-                  callerAvatar: "",
-                  callType: data['callType'],
-                  callData: data,
-                )
-              )
-            );
+      // Listen to Call Events
+      socketService.callStream.listen((event) {
+          if (event['event'] == 'incoming-call') {
+             final data = event['data'];
+             if (navigatorKey.currentState != null) {
+                navigatorKey.currentState!.push(
+                  MaterialPageRoute(
+                    builder: (_) => IncomingCallScreen(
+                      callerName: "User ${data['from']?.toString().substring(0, 5) ?? 'Unknown'}...",
+                      callerAvatar: "",
+                      callType: data['callType'],
+                      callData: data,
+                    )
+                  )
+                );
+             }
           }
       });
     } catch (e) {
@@ -68,7 +72,7 @@ class _MyAppState extends State<MyApp> {
   
   @override
   void dispose() {
-    SocketService().dispose();
+    SocketService().disconnect();
     super.dispose();
   }
 

@@ -3,13 +3,14 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final FlutterSecureStorage storage = const FlutterSecureStorage();
   String? _token;
   Map<String, dynamic>? _currentUser;
 
@@ -32,7 +33,7 @@ class AuthService {
   }
 
   // Verify OTP
-  Future<void> verifyOtp(String phone, String otp) async {
+  Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/verify-otp'),
       headers: {'Content-Type': 'application/json'},
@@ -43,7 +44,10 @@ class AuthService {
       final data = jsonDecode(response.body);
       _token = data['token'];
       _currentUser = data['user'];
-      await _storage.write(key: 'jwt_token', value: _token);
+      _currentUser = data['user'];
+      await storage.write(key: 'jwt_token', value: _token);
+      SocketService().connect(); // Connect to socket
+      return data;
     } else {
       throw Exception(jsonDecode(response.body)['message'] ?? 'Invalid OTP');
     }
@@ -51,7 +55,7 @@ class AuthService {
 
   // Auto Login
   Future<bool> tryAutoLogin() async {
-    final savedToken = await _storage.read(key: 'jwt_token');
+    final savedToken = await storage.read(key: 'jwt_token');
     if (savedToken == null || JwtDecoder.isExpired(savedToken)) {
       return false;
     }
@@ -66,6 +70,8 @@ class AuthService {
 
       if (response.statusCode == 200) {
         _currentUser = jsonDecode(response.body);
+        _currentUser = jsonDecode(response.body);
+        SocketService().connect(); // Connect to socket
         return true;
       }
     } catch (e) {
@@ -77,9 +83,26 @@ class AuthService {
     return false;
   }
 
+  Future<void> updateProfile({required String name, String? about}) async {
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/auth/me'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'name': name, 'about': about}),
+    );
+
+    if (response.statusCode == 200) {
+      _currentUser = jsonDecode(response.body);
+    } else {
+       throw Exception('Failed to update profile');
+    }
+  }
+
   Future<void> logout() async {
     _token = null;
     _currentUser = null;
-    await _storage.delete(key: 'jwt_token');
+    await storage.delete(key: 'jwt_token');
   }
 }

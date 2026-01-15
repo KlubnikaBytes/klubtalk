@@ -38,6 +38,7 @@ const { seedUsers } = require('../utils/userSeeder');
 
 // --- CONTACT ROUTES ---
 router.post('/contacts/add', verifyToken, contactController.addContact);
+router.post('/contacts/sync', verifyToken, contactController.syncContacts);
 router.get('/contacts', verifyToken, contactController.getMyContacts);
 
 // --- SEEDER ROUTES (DEV) ---

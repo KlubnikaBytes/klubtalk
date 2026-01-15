@@ -104,7 +104,49 @@ const getMyContacts = async (req, res) => {
     }
 };
 
+// Helper: Normalize phone to +91XXXXXXXXXX
+const normalizePhone = (phone) => {
+    let p = phone.replace(/\D/g, ''); // Remove non-digits
+    if (p.length === 10) return '+91' + p;
+    if (p.length === 12 && p.startsWith('91')) return '+' + p;
+    if (p.length > 10 && p.startsWith('0')) return '+91' + p.substring(1);
+    return '+' + p; // Fallback
+};
+
+// Sync Contacts
+const syncContacts = async (req, res) => {
+    try {
+        const { contacts } = req.body; // Array of strings
+        if (!contacts || !Array.isArray(contacts)) {
+            return res.status(400).json({ message: 'Contacts list required' });
+        }
+
+        const normalizedInput = contacts.map(c => normalizePhone(c));
+
+        // Find registered users with these numbers
+        const registeredUsers = await User.find({
+            phone: { $in: normalizedInput }
+        }).select('name phone avatar about isOnline lastSeen');
+
+        const registeredPhones = new Set(registeredUsers.map(u => u.phone));
+
+        // Identify unregistered contacts (phones from input that aren't in registeredUsers)
+        // We return the ORIGINAL input or Normalized? Normalized is better for future invites.
+        const unregisteredContacts = normalizedInput.filter(p => !registeredPhones.has(p));
+
+        res.json({
+            registered: registeredUsers,
+            unregistered: unregisteredContacts
+        });
+
+    } catch (error) {
+        console.error('Sync Contacts Error:', error);
+        res.status(500).json({ message: 'Failed to sync contacts' });
+    }
+};
+
 module.exports = {
     addContact,
-    getMyContacts
+    getMyContacts,
+    syncContacts
 };
