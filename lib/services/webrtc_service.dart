@@ -1,4 +1,5 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
@@ -10,7 +11,33 @@ class WebrtcService {
 
   factory WebrtcService() => _instance;
 
-  WebrtcService._internal();
+  WebrtcService._internal() {
+    _setupSocketListeners();
+  }
+
+  void _setupSocketListeners() {
+     SocketService().callStream.listen((data) {
+        final event = data['event'];
+        final payload = data['data']; // { answer: ... } or { candidate: ... }
+        
+        switch (event) {
+           case 'call-accepted':
+             handleAnswer(payload);
+             break;
+           case 'call-rejected':
+             onCallStateChange?.call("Rejected");
+             endCall();
+             break;
+           case 'call-ended':
+             onCallStateChange?.call("Ended");
+             endCall();
+             break;
+           case 'ice-candidate':
+             handleCandidate(payload);
+             break;
+        }
+     });
+  }
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
@@ -60,7 +87,7 @@ class WebrtcService {
     // Send Offer via Socket
     SocketService().emit('call-user', {
        'to': peerId,
-       'from': SocketService().socket?.id, // NOTE: Ideally we use USER ID not socket ID for robust auth, assuming auth middleware handles identity mapping
+       'from': AuthService().currentUserId, // Use Real User ID
        // But wait, our socket implementation in index.js uses data.to and data.from which are USER IDs usually.
        // Let's assume we pass our UserID.
        // Handled by caller UI passing correct IDs.

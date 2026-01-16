@@ -17,6 +17,7 @@ import 'package:whatsapp_clone/services/search_service.dart';
 import 'package:whatsapp_clone/widgets/global_search_overlay.dart';
 import 'package:whatsapp_clone/screens/camera/universal_camera_screen.dart';
 import 'package:whatsapp_clone/screens/status/status_tab.dart';
+import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -326,6 +327,35 @@ class _ChatListScreenState extends State<ChatListScreen> {
         // For accurate sorting and "lastMessage" details, re-fetching is safest unless we optimize.
         // Optimization: Update local list.
         _handleNewMessageSocket(data);
+    });
+    
+    // --- INCOMING CALL LISTENER ---
+    SocketService().callStream.listen((data) {
+       if (data['event'] == 'incoming-call') {
+          final callData = data['data']; // { from, callType, offer }
+          print("Incoming Call Received: $callData");
+          
+          if (!mounted) return;
+          
+          // Fetch Caller Info? 
+          // Ideally we fetch caller name/avatar OR pass it in the payload.
+          // For now, use "Unknown" or fetch if we have a contact cache.
+          // Since we don't have caller details in payload, we must assume callerId is usable.
+          final callerId = callData['from'];
+          
+          // Navigate to Incoming Call Screen
+          Navigator.push(
+            context, 
+            MaterialPageRoute(
+              builder: (_) => IncomingCallScreen(
+                 callerName: "User $callerId", // TODO: Fetch Name
+                 callerAvatar: "", // TODO: Fetch Avatar
+                 callType: callData['callType'],
+                 callData: callData,
+              )
+            )
+          );
+       }
     });
   }
 
