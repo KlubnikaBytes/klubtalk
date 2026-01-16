@@ -58,7 +58,7 @@ const { getIO } = require('../socket'); // Import socket helper
 
 exports.sendMessage = async (req, res) => {
     try {
-        const { chatId, content, type, mediaUrl } = req.body;
+        const { chatId, content, type, mediaUrl, tempId } = req.body; // Extract tempId
         // Fallback REST endpoint. Ideally use Socket.
         const message = await Message.create({
             chatId,
@@ -72,15 +72,17 @@ exports.sendMessage = async (req, res) => {
 
         // --- Socket Emission for Real-time Delivery ---
         try {
+            const { getIO, notifyDelivery } = require('../socket');
             const io = getIO();
-            const chat = await Chat.findById(chatId);
-            chat.participants.forEach(pId => {
-                const pIdStr = pId.toString();
-                // Emit to user's personal room, but SKIP sender to avoid echo
-                if (pIdStr !== req.uid) {
-                    io.to(pIdStr).emit('new_message', message);
-                }
-            });
+
+            // Emit to Chat Room (Include tempId for dedup/matching)
+            const msgObj = message.toObject();
+            if (tempId) msgObj.tempId = tempId;
+            io.to(chatId).emit('new_message', msgObj);
+
+            // Check Delivery
+            await notifyDelivery(io, message, chatId, tempId);
+
         } catch (socketErr) {
             console.error("Socket emit error in REST:", socketErr);
             // Don't fail the request if socket fails

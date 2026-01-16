@@ -303,20 +303,19 @@ const uploadAvatar = async (req, res) => {
 
         // Store relative path (e.g., /uploads/avatars/filename.jpg)
         const filePath = `/uploads/avatars/${req.file.filename}`;
-        const firebaseUid = req.user.uid;
-
-        // Update User in MongoDB by firebaseUid
-        const updatedUser = await User.findOneAndUpdate(
-            { firebaseUid: firebaseUid },
+        // Update User in MongoDB by _id (req.uid set by authMiddleware)
+        const updatedUser = await User.findByIdAndUpdate(
+            req.uid,
             {
                 $set: { avatar: filePath },
-                $setOnInsert: {
-                    phone: req.user.phone_number || 'UNKNOWN_PHONE',
-                    createdAt: new Date()
-                }
+                // phone is already in user, usually no need to set on insert here as we expect user to exist
             },
-            { new: true, upsert: true, setDefaultsOnInsert: true }
+            { new: true }
         );
+
+        if (!updatedUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
 
         return res.status(200).json({
             message: 'Profile photo updated successfully',
@@ -325,7 +324,8 @@ const uploadAvatar = async (req, res) => {
         });
     } catch (error) {
         console.error('Avatar upload error:', error);
-        return res.status(500).json({ error: 'Failed to update profile photo' });
+        console.error('Request User:', req.user); // Debug user
+        return res.status(500).json({ error: 'Failed to update profile photo', details: error.message });
     }
 };
 

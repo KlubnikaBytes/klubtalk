@@ -91,7 +91,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF9575CD),
+        backgroundColor: const Color(0xFFC92136),
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,7 +159,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
                           right: 0,
                           child: CircleAvatar(
                             radius: 10,
-                            backgroundColor: Color(0xFF9575CD),
+                            backgroundColor: Color(0xFFC92136),
                             child: Icon(Icons.check, size: 12, color: Colors.white),
                           ),
                         ),
@@ -176,7 +176,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
       ),
       floatingActionButton: _selectedIds.isNotEmpty
           ? FloatingActionButton(
-              backgroundColor: const Color(0xFF9575CD),
+              backgroundColor: const Color(0xFFC92136),
               onPressed: _goToGroupInfo,
               child: const Icon(Icons.arrow_forward, color: Colors.white),
             )

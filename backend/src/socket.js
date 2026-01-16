@@ -111,40 +111,17 @@ exports.init = (server) => {
                     updatedAt: new Date()
                 });
 
-                // Emit to participants via their Personal Rooms
-                const chat = await Chat.findById(chatId);
-                if (chat && chat.participants) {
-                    console.log(`📤 Processing participants for Chat ${chatId}:`, chat.participants);
-                    chat.participants.forEach(pId => {
-                        if (!pId) return;
-                        const pIdStr = pId.toString();
+                // Emit to the Chat Room (Everyone in the chat sees it instantly)
+                const msgObj = message.toObject();
+                if (tempId) msgObj.tempId = tempId;
+                io.to(chatId).emit('new_message', msgObj);
 
-                        // Invalid ID check
-                        if (pIdStr === 'null' || pIdStr === 'undefined') return;
-
-                        // Don't echo back to sender via "new_message", they use "message_sent" ack
-                        if (pIdStr === socket.uid) return;
-
-                        console.log(`📡 Emitting 'new_message' to User: ${pIdStr}`);
-                        const roomSize = io.sockets.adapter.rooms.get(pIdStr)?.size || 0;
-                        console.log(`   -> Room '${pIdStr}' has ${roomSize} sockets.`);
-
-                        // Emit to the user's room. 
-                        io.to(pIdStr).emit('new_message', message);
-
-                        // Emit delivery status INSTANTLY if online
-                        if (onlineUsers.has(pIdStr)) {
-                            // Mark as delivered in DB
-                            Message.findByIdAndUpdate(message._id, { status: 'delivered' }).exec(); // Async update
-
-                            // Notify Sender
-                            socket.emit('message_delivered', { messageId: message._id, userId: pIdStr, chatId: chatId });
-                        }
-                    });
-                }
-
-                // Ack back to sender
+                // Ack back to sender (confirm 'sent' status / update tempId)
                 socket.emit('message_sent', { tempId: tempId, message });
+
+                // --- Delivery Status Update (Server-side Hack for "Instant" delivery if online) ---
+                // Ideally client sends ACK, but we do this for simplicity as per previous logic.
+                await exports.notifyDelivery(io, message, chatId, tempId);
 
             } catch (e) {
                 console.error("Send Message Error", e);
@@ -162,19 +139,13 @@ exports.init = (server) => {
                 );
 
                 if (result.matchedCount > 0) {
-                    // Notify the OTHER participants in this chat that I saw their messages
-                    const chat = await Chat.findById(chatId);
-                    if (chat && chat.participants) {
-                        chat.participants.forEach(pId => {
-                            const pIdStr = pId.toString();
-                            if (pIdStr === socket.uid) return; // Don't notify self
-
-                            io.to(pIdStr).emit('messages_seen_update', {
-                                chatId,
-                                userId: socket.uid
-                            });
-                        });
-                    }
+                    // Emit to Room (everyone knows messages are seen)
+                    // socket.to(chatId) excludes sender, but 'seen' is usually relevant for OTHERS.
+                    // The person who read it (me) knows I read it. The sender needs to know.
+                    io.to(chatId).emit('messages_seen_update', {
+                        chatId,
+                        userId: socket.uid
+                    });
                 }
             } catch (e) {
                 console.error("Message Seen Error", e);
@@ -183,11 +154,13 @@ exports.init = (server) => {
 
         // 4. Typing
         socket.on('typing', (data) => {
-            io.to(data.toUserId).emit('typing', { chatId: data.chatId, userId: socket.uid });
+            // Broadcast to room (exclude sender)
+            socket.to(data.chatId).emit('typing', { chatId: data.chatId, userId: socket.uid });
         });
 
         socket.on('stop_typing', (data) => {
-            io.to(data.toUserId).emit('stop_typing', { chatId: data.chatId, userId: socket.uid });
+            // Broadcast to room (exclude sender)
+            socket.to(data.chatId).emit('stop_typing', { chatId: data.chatId, userId: socket.uid });
         });
 
         // --- WebRTC Signaling ---
@@ -241,6 +214,35 @@ exports.init = (server) => {
             }
         });
     });
+};
+
+// Helper to notify delivery (Shared with REST Controller)
+exports.notifyDelivery = async (io, message, chatId, tempId = null) => {
+    try {
+        const chat = await Chat.findById(chatId);
+        if (chat && chat.participants) {
+            chat.participants.forEach(pId => {
+                const pIdStr = pId.toString();
+                if (pIdStr === message.senderId.toString()) return; // Skip self
+
+                // If recipient is online, mark as delivered immediately
+                if (onlineUsers.has(pIdStr)) {
+                    // Update DB
+                    Message.findByIdAndUpdate(message._id, { status: 'delivered' }).exec();
+                    // Notify Sender (using their specific socket room or just by user ID room)
+                    // We emit to the SENDER'S room (User ID) so they get the update
+                    io.to(message.senderId.toString()).emit('message_delivered', {
+                        messageId: message._id,
+                        userId: pIdStr,
+                        chatId: chatId,
+                        tempId: tempId // Include tempId for optimistic matching
+                    });
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Notify Delivery Error:", e);
+    }
 };
 
 exports.getIO = () => {

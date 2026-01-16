@@ -519,7 +519,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
 
   Widget _buildFixedOption(IconData icon, String label, {Widget? trailing, VoidCallback? onTap}) {
     return ListTile(
-      leading: CircleAvatar(backgroundColor: const Color(0xFF9575CD), radius: 22, child: Icon(icon, color: Colors.white)),
+      leading: CircleAvatar(backgroundColor: const Color(0xFFC92136), radius: 22, child: Icon(icon, color: Colors.white)),
       title: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
       trailing: trailing,
       onTap: onTap,

@@ -68,7 +68,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF9575CD),
+        backgroundColor: const Color(0xFFC92136),
         foregroundColor: Colors.white,
          title: Column(
            crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,7 +129,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF9575CD),
+        backgroundColor: const Color(0xFFC92136),
         onPressed: _isCreating ? null : _create,
         child: const Icon(Icons.check, color: Colors.white),
       ),

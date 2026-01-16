@@ -86,10 +86,12 @@ class SocketService {
     });
     
     _socket!.on('message_delivered', (data) {
+       print("SocketService: Received message_delivered: $data");
        _deliveryStatusController.add(Map<String, dynamic>.from(data));
     });
     
     _socket!.on('messages_seen_update', (data) {
+       print("SocketService: Received messages_seen_update: $data");
        _seenStatusController.add(Map<String, dynamic>.from(data));
     });
 
@@ -158,5 +160,16 @@ class SocketService {
   // --- Call Actions ---
   void emit(String event, dynamic data) {
     _socket?.emit(event, data);
+  }
+
+  // --- Room Actions ---
+  void joinChat(String chatId) {
+    if (_socket == null) return;
+    _socket!.emit('join_chat', chatId);
+  }
+
+  void leaveChat(String chatId) {
+    if (_socket == null) return;
+    _socket!.emit('leave_chat', chatId);
   }
 }

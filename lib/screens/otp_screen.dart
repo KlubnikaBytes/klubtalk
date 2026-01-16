@@ -98,7 +98,7 @@ class _OtpScreenState extends State<OtpScreen> {
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF9575CD),
+                      backgroundColor: const Color(0xFFC92136),
                       foregroundColor: Colors.white,
                     ),
                     onPressed: _verifyOtp,

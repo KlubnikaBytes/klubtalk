@@ -2,22 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Colors - WhatsApp Inspired
-  static const Color primaryGreen = Color(0xFF075E54);
-  static const Color accentGreen = Color(0xFF25D366);
+  // Colors - WhatsApp Inspired (Red Theme)
+  static const Color primaryGreen = Color(0xFFC92136); // Replaced
+  static const Color accentGreen = Color(0xFFC92136); // Replaced
   static const Color lightBackground = Color(0xFFF8F9FA); 
   static const Color darkBackground = Color(0xFF121212);
   
   // Chat Specific
-  static const Color chatBackgroundLight = Color(0xFFECE5DD); // Wallpaper color
-  static const Color chatBackgroundDark = Color(0xFF0B141A);  // Dark wallpaper
+  static const Color chatBackgroundLight = Color(0xFFECE5DD); 
+  static const Color chatBackgroundDark = Color(0xFF0B141A); 
   
-  static const Color sentMessageLight = Color(0xFFDCF8C6); // Classic light green
-  static const Color sentMessageDark = Color(0xFF005C4B);  // Dark mode green
+  static const Color sentMessageLight = Color(0xFFC92136); // Replaced
+  static const Color sentMessageDark = Color(0xFF005C4B);  
   static const Color receivedMessageLight = Colors.white;
   static const Color receivedMessageDark = Color(0xFF202C33);
 
-  static const Color unreadBadgeColor = Color(0xFF25D366);
+  static const Color unreadBadgeColor = Color(0xFFC92136); // Replaced
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,

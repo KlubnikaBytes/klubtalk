@@ -83,8 +83,8 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       title: 'Messaging App',
       theme: ThemeData(
-         primaryColor: const Color(0xFF9575CD),
-         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9575CD)),
+         primaryColor: const Color(0xFFC92136),
+         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC92136)),
          useMaterial3: true,
       ),
       home: const AuthWrapper(),

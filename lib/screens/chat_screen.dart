@@ -28,6 +28,7 @@ import 'package:whatsapp_clone/widgets/sticker_message_widget.dart';
 import 'package:whatsapp_clone/models/sticker_model.dart';
 
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
+import 'package:whatsapp_clone/screens/contact_info_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final Contact? contact;
@@ -71,6 +72,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _messageSub;
   StreamSubscription? _typingSub;
   StreamSubscription? _onlineSub;
+  StreamSubscription? _deliverySub;
+  StreamSubscription? _seenSub;
 
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
 
@@ -91,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadMessages();
     _checkBlockStatus();
     _setupSocketListeners(); // Listen to socket
+    SocketService().joinChat(widget.chatId); // Join Chat Room
     SocketService().markSeen(widget.chatId); // Mark chat as seen on open
     if (!widget.isGroup) SocketService().checkOnline(widget.peerId); // Check initial online status
 
@@ -122,23 +126,52 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // 1. Messages
     _messageSub = socketService.messageStream.listen((data) {
-       // Check if message belongs to this chat
+       print("ChatScreen: Received socket message: $data"); 
+       if (!mounted) return;
+
        if (data['chatId'] == widget.chatId) {
-          // Avoid duplicates if we handled optimistic UI
-          // Check tempId or _id
-          final existingIndex = _messages.indexWhere((m) => 
-              (data['tempId'] != null && m['_id'] == data['tempId']) || m['_id'] == data['_id']
-          );
+          // Check for existing message (Real ID or Temp ID)
+          final existingIndex = _messages.indexWhere((m) {
+              final mId = m['_id'];
+              final dataId = data['_id'];
+              final dataTempId = data['tempId'];
+              
+              // Match by Real ID
+              if (mId == dataId) return true;
+              // Match by Temp ID (if optimistic message has it as _id)
+              if (dataTempId != null && mId == dataTempId) return true;
+              
+              return false;
+          });
 
           if (existingIndex != -1) {
+             print("ChatScreen: Updating existing message at index $existingIndex");
              setState(() {
-               _messages[existingIndex] = data; // Update (e.g. status changes or real ID replacement)
+               // PRESERVE STATUS if local is advanced
+               // Order: sending < sent < delivered < seen
+               final currentStatus = _messages[existingIndex]['status'];
+               final incomingStatus = data['status'];
+               
+               // If incoming is 'sent' but we are already 'delivered' or 'seen', keep ours.
+               if (incomingStatus == 'sent' && (currentStatus == 'delivered' || currentStatus == 'seen')) {
+                   data['status'] = currentStatus;
+               }
+               // Also preserve 'delivered' if incoming is 'sent'
+               
+               _messages[existingIndex] = data; 
              });
           } else {
+             print("ChatScreen: Inserting new message");
              setState(() {
-               _messages.insert(0, data);
+               _messages.insert(0, data); // Insert at 0 (Newest/Bottom)
              });
              _scrollToBottom();
+             
+             // If I am receiving a message from someone else while on this screen, mark it as seen immediately.
+             if (data['senderId'] != AuthService().currentUserId) {
+                print("ChatScreen: Open chat received message. Marking as seen.");
+                SocketService().markSeen(widget.chatId);
+             }
           }
        }
     });
@@ -166,28 +199,24 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     // 4. Delivery Status (Double Tick)
-    socketService.deliveryStatusStream.listen((data) {
-       // data: { messageId: '...', userId: '...' }
-       if (mounted) {
-         setState(() {
-           final index = _messages.indexWhere((m) => m['_id'] == data['messageId']);
-           if (index != -1) {
-             _messages[index]['status'] = 'delivered';
-           }
-         });
-       }
+    _deliverySub = socketService.deliveryStatusStream.listen((data) {
+       _updateMessageStatus(
+         messageId: data['messageId'], 
+         tempId: data['tempId'], 
+         status: 'delivered'
+       );
     });
 
     // 5. Seen Status (Blue Tick)
-    socketService.seenStatusStream.listen((data) {
-       // data: { chatId: '...', userId: '...' }
+    _seenSub = socketService.seenStatusStream.listen((data) {
        if (data['chatId'] == widget.chatId) {
           if (mounted) {
+            print("ChatScreen: Updating seen status for chat"); 
             setState(() {
-              // Mark all my messages as seen (since peer read them)
-              for (var m in _messages) {
-                 if (m['senderId'] == AuthService().currentUserId) {
-                    m['status'] = 'seen';
+              // Mark all my text/media messages as seen
+              for (var i = 0; i < _messages.length; i++) {
+                 if (_messages[i]['senderId'] == AuthService().currentUserId && _messages[i]['status'] != 'seen') {
+                    _messages[i]['status'] = 'seen';
                  }
               }
             });
@@ -196,11 +225,46 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  // Robust Status Updater
+  void _updateMessageStatus({String? messageId, String? tempId, required String status}) {
+      if (!mounted) return;
+      
+      setState(() {
+         int index = -1;
+         
+         // 1. Try finding by Real ID
+         if (messageId != null) {
+            index = _messages.indexWhere((m) => m['_id'] == messageId);
+         }
+         
+         // 2. If not found, try finding by Temp ID
+         if (index == -1 && tempId != null) {
+            index = _messages.indexWhere((m) => m['_id'] == tempId || m['tempId'] == tempId);
+         }
+         
+         if (index != -1) {
+            print("ChatScreen: Updating status of message $index to $status");
+            _messages[index]['status'] = status;
+            
+            // If we have a real ID now (e.g. from delivery event), ensure we update our local ID if it was temp
+            if (messageId != null && _messages[index]['_id'] != messageId) {
+               _messages[index]['_id'] = messageId;
+            }
+         } else {
+            print("ChatScreen: Warning - Message not found for status update (ID: $messageId, Temp: $tempId)");
+         }
+      });
+  }
+
+
   @override
   void dispose() {
+    SocketService().leaveChat(widget.chatId); // Leave Chat Room
     _messageSub?.cancel();
     _typingSub?.cancel();
     _onlineSub?.cancel();
+    _deliverySub?.cancel();
+    _seenSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -212,13 +276,13 @@ class _ChatScreenState extends State<ChatScreen> {
      
      try {
        final blockedList = await _chatService.getBlockedUsers();
-       print("DEBUG: Fetched blocked list: $blockedList");
+        // print("DEBUG: Fetched blocked list: $blockedList");
        
        if (mounted) {
          setState(() {
            _blockedUserIds = blockedList.toSet();
          });
-         print("DEBUG: Checking if '${widget.peerId}' is in blocked list. Result: $_isPeerBlocked");
+         // print("DEBUG: Checking if '${widget.peerId}' is in blocked list. Result: $_isPeerBlocked");
        }
      } catch (e) {
        print("Failed to check block status: $e");
@@ -304,10 +368,12 @@ class _ChatScreenState extends State<ChatScreen> {
       final messages = await _chatService.getMessages(widget.chatId);
       if (mounted) {
         setState(() {
-          _messages = messages;
+          _messages = messages.reversed.toList(); // Store Newest First
           _isLoading = false;
         });
         if (updateLoading) {
+             // If newest is at 0, and we use reverse list view, we are already at 0 scroll offset usually?
+             // But force scroll to 0 (bottom) anyway
              Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
         }
       }
@@ -357,19 +423,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
     
     try {
-      // Use ChatService which now routes to Socket if connected
-      // We pass tempId if we were calling socket directly, but ChatService.sendMessage signature 
-      // might generally not support it unless we changed it?
-      // Wait, I updated sendMessage in ChatService to use SocketService.sendMessage.
-      // SocketService.sendMessage accepts tempId.
-      // ChatService.sendMessage currently only takes (chatId, text, type). 
-      // I should update ChatService.sendMessage to take tempId OR just rely on content matching?
-      // Content matching is risky. Better to add tempId to ChatService.
-      // For now, I'll update ChatService to accept optional tempId.
-      await _chatService.sendMessage(widget.chatId, text, tempId: tempId);
+      // Use ChatService
+      // We pass tempId to help match the socket ack
+      final sentMessage = await _chatService.sendMessage(widget.chatId, text, tempId: tempId);
       
-      // No need to reload messages if socket works, as 'message_sent' or 'new_message' will update it.
-      // _loadMessages(updateLoading: false); 
+      // If REST fallback returned a message (socket disconnected case), update our optimistic one
+      if (sentMessage != null) {
+         print("ChatScreen: REST fallback returned message. Updating UI.");
+         final index = _messages.indexWhere((m) => m['_id'] == tempId);
+         if (index != -1) {
+            setState(() {
+              _messages[index] = sentMessage;
+            });
+         }
+      } 
     } catch (e) {
       if(mounted) {
          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
@@ -381,12 +448,33 @@ class _ChatScreenState extends State<ChatScreen> {
   }
   
   Future<void> _handleVoiceRecording(String path, int duration) async {
+      final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+      final optimisticMessage = {
+        '_id': tempId,
+        'chatId': widget.chatId,
+        'senderId': AuthService().currentUserId,
+        'type': 'audio', // UI expects audio for voice bubbles usually
+        'content': path, // Local path for preview
+        'duration': duration, // Duration
+        'timestamp': DateTime.now().toIso8601String(),
+        'status': 'sending' 
+      };
+
+      setState(() {
+        _messages.insert(0, optimisticMessage);
+      });
+      _scrollToBottom();
+
       try {
-        await _chatService.sendVoiceMessage(widget.chatId, path, duration);
-        _loadMessages(updateLoading: false);
-        _scrollToBottom();
+        await _chatService.sendVoiceMessage(widget.chatId, path, duration, tempId: tempId);
+        // Do NOT reload messages. Trust socket/optimistic update.
       } catch (e) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
+        if(mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
+            setState(() {
+              _messages.removeWhere((m) => m['_id'] == tempId);
+            });
+        }
       }
   }
 
@@ -395,42 +483,47 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final XFile? media = await picker.pickMedia(); 
       if (media != null) {
-          print("DEBUG: Media Path: ${media.path}");
-          print("DEBUG: XFile Mime: ${media.mimeType}");
-          
           String mimeType = media.mimeType ?? lookupMimeType(media.path) ?? '';
-          print("DEBUG: Initial Resolved Mime: $mimeType");
           
-          // Fallback: Read header bytes if mimeType is still unknown
+          // Fallback mime detection
           if (mimeType.isEmpty) {
              try {
-                final bytes = await media.readAsBytes(); // Read file to check magic numbers
+                final bytes = await media.readAsBytes();
                 final headerBytes = bytes.take(12).toList();
                 mimeType = lookupMimeType(media.path, headerBytes: headerBytes) ?? '';
-                print("DEBUG: Detected Mime from bytes: $mimeType");
-             } catch (e) {
-                print("DEBUG: Failed to read bytes for mime detection: $e");
-             }
+             } catch (e) { print("Mime detect error: $e"); }
           }
 
-          print("DEBUG: Final MimeType: $mimeType");
+          final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+          final type = mimeType.startsWith('video/') ? 'video' : 'image';
+          
+          final optimisticMessage = {
+            '_id': tempId,
+            'chatId': widget.chatId,
+            'senderId': AuthService().currentUserId,
+            'type': type,
+            'content': media.path, // Local path
+            'timestamp': DateTime.now().toIso8601String(),
+            'status': 'sending'
+          };
 
-          if (mimeType.startsWith('video/')) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading video...')));
-              await _chatService.sendVideoMessage(widget.chatId, media.path, mimeType: mimeType);
-          } else if (mimeType.startsWith('image/')) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading image...')));
-              await _chatService.sendImageMessage(widget.chatId, media.path, mimeType: mimeType);
-          } else {
-             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unsupported media type: $mimeType for ${media.path}')));
-             return;
-          }
-
-          _loadMessages(updateLoading: false);
+          setState(() {
+             _messages.insert(0, optimisticMessage);
+          });
           _scrollToBottom();
+
+          if (type == 'video') {
+              await _chatService.sendVideoMessage(widget.chatId, media.path, mimeType: mimeType, tempId: tempId);
+          } else {
+              await _chatService.sendImageMessage(widget.chatId, media.path, mimeType: mimeType, tempId: tempId);
+          }
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+         // TODO: Remove optimistic message on error? We might want to mark as failed instead.
+         // For now, removing to be consistent with text logic.
+      }
     }
   }
 
@@ -443,12 +536,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading file...')));
+        final name = result.files.single.name;
+        final size = result.files.single.size;
         
-        await _chatService.sendFileMessage(widget.chatId, path);
-        
-        _loadMessages(updateLoading: false);
-        _scrollToBottom();
+        final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+        // Optimistic UI for File
+        final optimisticMessage = {
+            '_id': tempId,
+            'chatId': widget.chatId,
+            'senderId': AuthService().currentUserId,
+            'type': 'file',
+            'content': path, // Local path
+            'filename': name,
+            'size': size,
+            'timestamp': DateTime.now().toIso8601String(),
+            'status': 'sending'
+        };
+
+         setState(() {
+             _messages.insert(0, optimisticMessage);
+          });
+          _scrollToBottom();
+  
+        await _chatService.sendFileMessage(widget.chatId, path, tempId: tempId);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -591,7 +701,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showWallpaperDialog() {
      // Simple Color Picker for now as "Theme"
      final colors = [
-       Colors.white, const Color(0xFFECE5DD), const Color(0xFFDCF8C6), 
+       Colors.white, const Color(0xFFECE5DD), const Color(0xFFC92136), 
        const Color(0xFFE1F5FE), const Color(0xFFFBE9E7),
      ];
      
@@ -928,17 +1038,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToMatch(int index) {
      final matchId = _searchMatches[index]['_id'];
-     // Find index in _messages
-     // _messages is sorted? usually newest at index 0 if reverse is true?
-     // ListView is reverse: true. So index 0 is bottom (newest).
-     // Backend returns matches. If backend sorts timestamp desc, match 0 is newest.
+     // _messages is Newest First. 
+     // ListView is reverse: true.
+     // So Index 0 is Bottom (Newest). Index N is Top (Oldest).
+     // indexWhere returns index in _messages.
      
      final msgIndex = _messages.indexWhere((m) => m['_id'] == matchId);
      if (msgIndex != -1) {
         // Scroll to this index.
-        // Rough estimation: 70 pixels per message
         _scrollController.animateTo(
-           msgIndex * 70.0, 
+           msgIndex * 70.0, // Approximate height
            duration: const Duration(milliseconds: 300), 
            curve: Curves.easeOut
         );
@@ -980,7 +1089,7 @@ class _ChatScreenState extends State<ChatScreen> {
   PreferredSizeWidget _buildNormalAppBar() {
     return AppBar(
         titleSpacing: 0,
-        backgroundColor: const Color(0xFF9575CD),
+        backgroundColor: const Color(0xFFC92136),
         foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -991,16 +1100,25 @@ class _ChatScreenState extends State<ChatScreen> {
             AvatarWidget(imageUrl: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '', radius: 18),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
-                  if (!widget.isGroup && widget.contact != null)
-                    _isPeerTyping 
-                    ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFDCF8C6))) // WhatsApp Greenish
-                    : Text(_isPeerOnline ? 'Online' : 'Offline', 
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
-                ],
+              child: GestureDetector(
+                onTap: () {
+                   if (widget.isGroup) {
+                      Navigator.push(context, MaterialPageRoute(builder: (c) => GroupDetailsScreen(chatId: widget.chatId, groupName: widget.groupName ?? 'Group', groupIcon: widget.groupPhoto ?? '')));
+                   } else if (widget.contact != null) {
+                      Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId)));
+                   }
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
+                    if (!widget.isGroup && widget.contact != null)
+                      _isPeerTyping 
+                      ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFC92136))) 
+                      : Text(_isPeerOnline ? 'Online' : 'Offline', 
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+                  ],
+                ),
               ),
             ),
           ],
@@ -1057,8 +1175,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           )
                         )
                       );
-                   } else {
-                      // Navigate to Contact Info
+                   } else if (widget.contact != null) {
+                      Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId)));
                    }
                    break;
                  case 'media': 
@@ -1164,8 +1282,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       reverse: true,
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
-                        final reversedIndex = _messages.length - 1 - index;
-                        final data = _messages[reversedIndex];
+                        final data = _messages[index];
                         
                         final isMe = data['senderId'] == AuthService().currentUserId;
                         final type = data['type'] ?? 'text';
@@ -1209,7 +1326,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             decoration: BoxDecoration(
-                              color: isMe ? const Color(0xFF9575CD) : Colors.white,
+                              color: isMe ? const Color(0xFFC92136) : Colors.white,
                               borderRadius: BorderRadius.only(
                                 topLeft: const Radius.circular(10),
                                 topRight: const Radius.circular(10),
@@ -1224,7 +1341,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                type == 'voice' 
+                                type == 'voice' || type == 'audio' 
                                 ? AudioMessageBubble(
                                     key: ValueKey(data['_id']), 
                                     audioUrl: content,

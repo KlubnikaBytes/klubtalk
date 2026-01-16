@@ -98,7 +98,7 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget> {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF9575CD), // Purple
+          color: const Color(0xFFC92136), // Purple
           shape: BoxShape.circle,
           boxShadow: [
              if (_isRecording)

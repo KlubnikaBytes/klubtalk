@@ -177,7 +177,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                      ),
                    ),
                    FloatingActionButton(
-                     backgroundColor: const Color(0xFF9575CD),
+                     backgroundColor: const Color(0xFFC92136),
                      onPressed: _isUploading ? null : _sendMedia,
                      child: _isUploading 
                        ? const CircularProgressIndicator(color: Colors.white) 

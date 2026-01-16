@@ -48,7 +48,7 @@ class _StickerPickerWidgetState extends State<StickerPickerWidget> with SingleTi
     if (_isLoading) {
       return const SizedBox(
         height: 250,
-        child: Center(child: CircularProgressIndicator(color: Color(0xFF9575CD))),
+        child: Center(child: CircularProgressIndicator(color: Color(0xFFC92136))),
       );
     }
 
@@ -63,8 +63,8 @@ class _StickerPickerWidgetState extends State<StickerPickerWidget> with SingleTi
           child: TabBar(
             controller: _tabController,
             isScrollable: true,
-            indicatorColor: const Color(0xFF9575CD),
-            labelColor: const Color(0xFF9575CD),
+            indicatorColor: const Color(0xFFC92136),
+            labelColor: const Color(0xFFC92136),
             unselectedLabelColor: Colors.grey,
             tabs: [
               const Tab(icon: Icon(Icons.access_time)), // Recents

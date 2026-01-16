@@ -35,7 +35,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 title: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.normal)),
                 subtitle: Text(about, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.qr_code, color: Color(0xFF9575CD)),
+                trailing: const Icon(Icons.qr_code, color: Color(0xFFC92136)),
                 onTap: () {
                   if (user != null) {
                     Navigator.push(

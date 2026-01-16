@@ -42,16 +42,17 @@ class ChatService {
   }
 
   // Send Text Message
-  Future<void> sendMessage(String chatId, String text, {String type = 'text', String? tempId}) async {
+  Future<Map<String, dynamic>?> sendMessage(String chatId, String text, {String type = 'text', String? tempId}) async {
     // Determine if we should use Socket or REST
     // For text, Socket is preferred for speed.
     if (SocketService().isConnected) {
        SocketService().sendMessage(chatId, text, type, tempId: tempId);
        // Note: We won't get a full Message object back immediately until the ack or 'new_message' event.
        // The UI should handle optimistic updates.
+       return null; 
     } else {
        // Fallback to REST if socket disconnected
-       await _sendMessageToBackend(chatId, text, type);
+       return await _sendMessageToBackend(chatId, text, type);
     }
   }
 
@@ -61,15 +62,16 @@ class ChatService {
   }
 
   // Send Voice Message
-  Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds) async {
+  Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds, {String? tempId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadVoice(fileOrPath);
-      await _sendMessageToBackend(chatId, mediaData['url'], 'voice', 
+      await _sendMessageToBackend(chatId, mediaData['url'], 'audio', 
         duration: durationSeconds,
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
-        mime: mediaData['mime']
+        mime: mediaData['mime'],
+        tempId: tempId
       );
     } catch (e) {
       print('Voice Send Error: $e');
@@ -78,7 +80,7 @@ class ChatService {
   }
 
   // Send Image Message
-  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption}) async {
+  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadImage(fileOrPath, mimeType: mimeType);
@@ -86,7 +88,8 @@ class ChatService {
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
-        caption: caption
+        caption: caption,
+        tempId: tempId
       );
     } catch (e) {
       print('Image Send Error: $e');
@@ -95,7 +98,7 @@ class ChatService {
   }
 
   // Send Video Message
-  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption}) async {
+  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId}) async {
     try {
       final uploadService = MediaUploadService();
       // Reuse uploadImage/Generic for now as backend handles generic media uploads
@@ -104,7 +107,8 @@ class ChatService {
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
-        caption: caption
+        caption: caption,
+        tempId: tempId
       );
     } catch (e) {
       print('Video Send Error: $e');
@@ -113,7 +117,7 @@ class ChatService {
   }
 
   // Send File Message
-  Future<void> sendFileMessage(String chatId, dynamic fileOrPath) async {
+  Future<void> sendFileMessage(String chatId, dynamic fileOrPath, {String? tempId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadGenericFile(fileOrPath);
@@ -130,7 +134,8 @@ class ChatService {
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
         filename: mediaData['filename'],
-        size: mediaData['size']
+        size: mediaData['size'],
+        tempId: tempId
       );
     } catch (e) {
       print('File Send Error: $e');
@@ -139,7 +144,7 @@ class ChatService {
   }
 
   // Helper: Post Message to Backend
-  Future<void> _sendMessageToBackend(
+  Future<Map<String, dynamic>> _sendMessageToBackend(
     String chatId, 
     String content, 
     String type, {
@@ -149,7 +154,8 @@ class ChatService {
     String? mime,
     String? filename,
     int? size,
-    String? caption
+    String? caption,
+    String? tempId
   }) async {
     try {
       final response = await http.post(
@@ -166,10 +172,13 @@ class ChatService {
           if (filename != null) 'filename': filename,
           if (size != null) 'size': size,
           if (caption != null && caption.isNotEmpty) 'caption': caption,
+          if (tempId != null) 'tempId': tempId,
         }),
       );
 
-      if (response.statusCode != 200 && response.statusCode != 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+         return Map<String, dynamic>.from(jsonDecode(response.body));
+      } else {
         throw Exception('Failed to send message: ${response.body}');
       }
     } catch (e) {

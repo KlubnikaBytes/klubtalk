@@ -35,7 +35,7 @@ class StickerMessageWidget extends StatelessWidget {
                placeholder: (context, url) => Container(
                    width: 140, height: 140, 
                    alignment: Alignment.center,
-                   child: const CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9575CD)))
+                   child: const CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFC92136)))
                ),
                errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 50, color: Colors.grey),
              ),

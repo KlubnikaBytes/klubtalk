@@ -119,7 +119,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         bottom: 0,
                         right: 0,
                         child: CircleAvatar(
-                          backgroundColor: const Color(0xFF9575CD),
+                          backgroundColor: const Color(0xFFC92136),
                           radius: 24,
                           child: _isUploading
                               ? const CircularProgressIndicator(color: Colors.white)
@@ -156,7 +156,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                    leading: const Icon(Icons.info_outline, color: Colors.grey),
                    title: const Text('About', style: TextStyle(fontSize: 12, color: Colors.grey)),
                    subtitle: Text(user.about, style: const TextStyle(fontSize: 16, color: Colors.black)),
-                   trailing: const Icon(Icons.edit, color: Color(0xFF9575CD)),
+                   trailing: const Icon(Icons.edit, color: Color(0xFFC92136)),
                    onTap: () => _editAbout(context, user.about),
                 ),
                 const Divider(indent: 70),

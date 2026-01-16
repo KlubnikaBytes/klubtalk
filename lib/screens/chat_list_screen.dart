@@ -204,7 +204,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
           ],
         ),
         floatingActionButton: !_isSearching ? FloatingActionButton(
-          backgroundColor: const Color(0xFF9575CD),
+          backgroundColor: const Color(0xFFC92136),
           child: const Icon(Icons.message, color: Colors.white),
           onPressed: () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen()));
@@ -259,7 +259,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
         controller: _tabController,
         indicatorColor: Colors.white,
         tabs: const [
-           Tab(text: 'Conversations'),
+           Tab(text: 'Convo'),
            Tab(text: 'Updates'),
            Tab(text: 'Unread'),
            Tab(text: 'Favorites'),

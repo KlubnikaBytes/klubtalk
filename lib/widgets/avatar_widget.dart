@@ -25,9 +25,10 @@ class AvatarWidget extends StatelessWidget {
     }
 
     // DEBUG: Verify final URL
-    if (hasImage) {
-      print("Avatar URL -> $fullUrl");
-    }
+    // DEBUG: Verify final URL
+    // if (hasImage) {
+    //   print("Avatar URL -> $fullUrl");
+    // }
 
     return CircleAvatar(
       radius: radius,

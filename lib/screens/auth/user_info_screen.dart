@@ -97,7 +97,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     right: -10,
                     child: IconButton(
                       onPressed: () {}, // TODO: Implement Image Picker
-                      icon: const Icon(Icons.add_a_photo, color: Color(0xFF9575CD)),
+                      icon: const Icon(Icons.add_a_photo, color: Color(0xFFC92136)),
                     ),
                   ),
                 ],
@@ -111,10 +111,10 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                       decoration: const InputDecoration(
                         hintText: 'Type your name here',
                         border: UnderlineInputBorder(
-                             borderSide: BorderSide(color: Color(0xFF9575CD))
+                             borderSide: BorderSide(color: Color(0xFFC92136))
                         ),
                         focusedBorder: UnderlineInputBorder(
-                             borderSide: BorderSide(color: Color(0xFF9575CD), width: 2)
+                             borderSide: BorderSide(color: Color(0xFFC92136), width: 2)
                         ),
                       ),
                     ),
@@ -129,7 +129,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                 child: ElevatedButton(
                   onPressed: _saveProfile,
                    style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF9575CD),
+                    backgroundColor: const Color(0xFFC92136),
                     foregroundColor: Colors.white,
                   ),
                   child: _isLoading 

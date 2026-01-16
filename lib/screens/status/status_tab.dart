@@ -43,7 +43,7 @@ class _StatusTabState extends State<StatusTab> {
   @override
   Widget build(BuildContext context) {
     if (_statusService.isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF7E57C2)));
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFC92136)));
     }
 
     return ListView(
@@ -107,7 +107,7 @@ class _StatusTabState extends State<StatusTab> {
               child: Container(
                 padding: const EdgeInsets.all(2),
                 decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: const Icon(Icons.add_circle, color: Color(0xFF7E57C2), size: 20),
+                child: const Icon(Icons.add_circle, color: Color(0xFFC92136), size: 20),
               )
             )
         ],
@@ -124,7 +124,7 @@ class _StatusTabState extends State<StatusTab> {
          }
       },
       trailing: IconButton(
-        icon: const Icon(Icons.camera_alt, color: Color(0xFF7E57C2)),
+        icon: const Icon(Icons.camera_alt, color: Color(0xFFC92136)),
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen())),
       ),
     );
@@ -144,7 +144,7 @@ class _StatusTabState extends State<StatusTab> {
           children: [
              const SizedBox(height: 10),
              ListTile(
-               leading: const CircleAvatar(backgroundColor: Color(0xFF7E57C2), child: Icon(Icons.camera_alt, color: Colors.white)),
+               leading: const CircleAvatar(backgroundColor: Color(0xFFC92136), child: Icon(Icons.camera_alt, color: Colors.white)),
                title: const Text('Camera'),
                onTap: () {
                   Navigator.pop(context);
@@ -228,7 +228,7 @@ class _StatusRing extends StatelessWidget {
     if (isEmpty) return child;
 
     return CustomPaint(
-      painter: _RingPainter(count: count, color: isViewed ? Colors.grey : const Color(0xFF7E57C2)),
+      painter: _RingPainter(count: count, color: isViewed ? Colors.grey : const Color(0xFFC92136)),
       child: Container(
         padding: const EdgeInsets.all(4), 
         child: child,

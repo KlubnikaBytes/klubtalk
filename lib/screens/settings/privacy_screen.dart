@@ -45,7 +45,7 @@ class PrivacyScreen extends StatelessWidget {
               const Divider(),
               
               SwitchListTile(
-                activeColor: const Color(0xFF9575CD),
+                activeColor: const Color(0xFFC92136),
                 title: const Text('Read receipts'),
                 subtitle: const Text('If turned off, you won\'t send or receive read receipts. Read receipts are always sent for group chats.'),
                 value: user.readReceipts,
