@@ -54,7 +54,11 @@ class StickerMessageWidget extends StatelessWidget {
                  ),
                  if (isMe) ...[
                    const SizedBox(width: 4),
-                   const Icon(Icons.done_all, size: 14, color: Colors.blueAccent) // Blue ticks for now
+                   Icon(
+                     (message['status'] == 'seen' || message['status'] == 'delivered') ? Icons.done_all : Icons.done,
+                     size: 14, 
+                     color: message['status'] == 'seen' ? const Color(0xFF53BDEB) : Colors.grey
+                   )
                  ]
                ],
             ),

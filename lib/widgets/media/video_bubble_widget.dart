@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'dart:io';
@@ -92,6 +93,40 @@ class _VideoBubbleWidgetState extends State<VideoBubbleWidget> {
                        style: const TextStyle(color: Colors.white, fontSize: 12)
                      ),
                    ],
+                 ),
+               ),
+               
+               // 4. Timestamp & Status Overlay
+               Positioned(
+                 bottom: 8,
+                 right: 8,
+                 child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                         Text(
+                            widget.message['timestamp'] != null 
+                               ? DateFormat('h:mm a').format(DateTime.parse(widget.message['timestamp']).toLocal())
+                               : '',
+                            style: const TextStyle(color: Colors.white, fontSize: 10)
+                         ),
+                         if (widget.isMe) ...[
+                           const SizedBox(width: 4),
+                           Icon(
+                             (widget.message['status'] == 'seen' || widget.message['status'] == 'delivered') 
+                                 ? Icons.done_all 
+                                 : Icons.done,
+                             size: 14, 
+                             color: widget.message['status'] == 'seen' ? const Color(0xFF53BDEB) : Colors.white
+                           )
+                         ]
+                      ],
+                    ),
                  ),
                )
             ],

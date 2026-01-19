@@ -41,68 +41,45 @@ class MessageBubble extends StatelessWidget {
           color: bubbleColor,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Stack(
-              children: [
-                // Render text with padding for timestamp
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16), // Space for time
-                  child: Text(
-                    message.text,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: textColor,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                // Positioned details at bottom right of the stack
-                Positioned(
-                  bottom: -2,
-                  right: 0,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        DateFormat('h:mm a').format(message.timestamp),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: timeColor,
-                          fontSize: 10,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Render text
+                    Padding(
+                      padding: const EdgeInsets.only(right: 0, bottom: 4), 
+                      child: Text(
+                        message.text,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: textColor,
+                          fontSize: 16,
                         ),
                       ),
-                      if (isMe) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          message.isRead ? Icons.done_all : Icons.done,
-                          size: 14,
-                          color: message.isRead ? const Color(0xFF53BDEB) : timeColor, // Blue ticks
+                    ),
+                    // Timestamp & Ticks Row (Bottom Right)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          DateFormat('h:mm a').format(message.timestamp),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: timeColor,
+                            fontSize: 10,
+                          ),
                         ),
+                        if (isMe) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            message.isRead ? Icons.done_all : Icons.done,
+                            size: 14,
+                            color: message.isRead ? const Color(0xFF53BDEB) : timeColor,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                // Invisible Copy of Text to ensure container encompasses everything including the absolute positioned time
-                // This is a common Flutter trick for "Flow" layout in chat bubbles without complex Row/Column nesting
-                Visibility(
-                  visible: false, 
-                  maintainSize: true, 
-                  maintainAnimation: true, 
-                  maintainState: true,
-                  child: Padding(
-                     padding: const EdgeInsets.only(bottom: 16),
-                     child: Text(
-                      message.text,
-                       style: theme.textTheme.bodyLarge?.copyWith(fontSize: 16),
-                     ),
-                  )
-                ),
-                 Visibility(
-                  visible: false, 
-                  maintainSize: true, 
-                  maintainAnimation: true, 
-                  maintainState: true,
-                  child: const Text('      00:00 AM') // Spacer for min width
-                ),
-              ],
-            ),
           ),
         ),
       ),

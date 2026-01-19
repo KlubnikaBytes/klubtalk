@@ -57,8 +57,9 @@ class ChatService {
   }
 
   // Send Sticker Message
-  Future<void> sendStickerMessage(String chatId, String stickerUrl) async {
-      await _sendMessageToBackend(chatId, stickerUrl, 'sticker');
+  // Send Sticker Message
+  Future<Map<String, dynamic>> sendStickerMessage(String chatId, String stickerUrl, {String? tempId}) async {
+      return await _sendMessageToBackend(chatId, stickerUrl, 'sticker', tempId: tempId);
   }
 
   // Send Voice Message

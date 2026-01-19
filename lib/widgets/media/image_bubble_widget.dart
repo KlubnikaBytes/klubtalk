@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
@@ -119,7 +120,48 @@ class ImageBubbleWidget extends StatelessWidget {
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: imageWidget
+        child: Stack(
+          children: [
+            imageWidget ?? Container(),
+            // Timestamp & Status Overlay
+            Positioned(
+              bottom: 6,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                     Text(
+                        message['timestamp'] != null 
+                           ? // Importing intl needed or raw string? Using basic logic or need import. 
+                             // Best to assume Intl is available or use simple parsing if import missing.
+                             // Actually, let's use a cleaner approach: pass formatted time or just format it.
+                             // We'll add import 'package:intl/intl.dart'; at top.
+                             DateFormat('h:mm a').format(DateTime.parse(message['timestamp']).toLocal())
+                           : '',
+                        style: const TextStyle(color: Colors.white, fontSize: 10)
+                     ),
+                     if (isMe) ...[
+                       const SizedBox(width: 4),
+                       Icon(
+                         (message['status'] == 'seen' || message['status'] == 'delivered') 
+                             ? Icons.done_all 
+                             : Icons.done,
+                         size: 14, 
+                         color: message['status'] == 'seen' ? const Color(0xFF53BDEB) : Colors.white
+                       )
+                     ]
+                  ],
+                ),
+              ),
+            )
+          ],
+        )
       ),
     );
   }

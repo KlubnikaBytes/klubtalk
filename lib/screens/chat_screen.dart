@@ -130,6 +130,11 @@ class _ChatScreenState extends State<ChatScreen> {
        print("ChatScreen: Received socket message: $data"); 
        if (!mounted) return;
 
+       // Fix: Ensure timestamp survives socket updates
+       if (data['timestamp'] == null) {
+          data['timestamp'] = data['createdAt'] ?? DateTime.now().toIso8601String();
+       }
+
        if (data['chatId'] == widget.chatId) {
           // Check for existing message (Real ID or Temp ID)
           final existingIndex = _messages.indexWhere((m) {
@@ -338,8 +343,22 @@ class _ChatScreenState extends State<ChatScreen> {
      _scrollToBottom();
      
      try {
-       await _chatService.sendStickerMessage(widget.chatId, sticker.imageUrl);
-       _loadMessages(updateLoading: false);
+       // Fix: Pass tempId and handle response locally instead of reloading all
+       final sentMessage = await _chatService.sendStickerMessage(widget.chatId, sticker.imageUrl, tempId: tempId);
+       
+       if (sentMessage != null) {
+          // Fix: Ensure timestamp survives REST updates
+          if (sentMessage['timestamp'] == null) {
+             sentMessage['timestamp'] = sentMessage['createdAt'] ?? DateTime.now().toIso8601String();
+          }
+
+          final index = _messages.indexWhere((m) => m['_id'] == tempId);
+          if (index != -1 && mounted) {
+             setState(() {
+               _messages[index] = sentMessage;
+             });
+          }
+       }
      } catch (e) {
         if(mounted) {
            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send sticker: $e')));
@@ -431,6 +450,12 @@ class _ChatScreenState extends State<ChatScreen> {
       // If REST fallback returned a message (socket disconnected case), update our optimistic one
       if (sentMessage != null) {
          print("ChatScreen: REST fallback returned message. Updating UI.");
+         
+         // Fix: Ensure timestamp survives REST updates
+         if (sentMessage['timestamp'] == null) {
+            sentMessage['timestamp'] = sentMessage['createdAt'] ?? DateTime.now().toIso8601String();
+         }
+
          final index = _messages.indexWhere((m) => m['_id'] == tempId);
          if (index != -1) {
             setState(() {
@@ -1357,6 +1382,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 type == 'voice' || type == 'audio' 
                                 ? AudioMessageBubble(
                                     key: ValueKey(data['_id']), 
+                                    message: data, // PASS MESSAGE
                                     audioUrl: content,
                                     isSender: isMe,
                                     durationSeconds: duration,
@@ -1366,74 +1392,83 @@ class _ChatScreenState extends State<ChatScreen> {
                                     builder: (context) {
                                       // 🧠 MESSAGE CLASSIFICATION LOGIC
                                       // 1️⃣ CAMERA ICON MEDIA (Photo / Video)
-                                      // STRICT: Only render as Image if type is image OR mime is image (and not video)
                                       if ((type == 'image' && !mimeType.startsWith('video')) || mimeType.startsWith('image/')) {
                                          return MediaBubbleWidget(message: data, isMe: isMe);
                                       }
                                       
-                                      // STRICT: Only render as Video if type is video OR mime is video
                                       if (type == 'video' || mimeType.startsWith('video/')) {
                                          return MediaBubbleWidget(message: data, isMe: isMe);
                                       }
 
-                                      // 2️⃣ ATTACHMENT ICON MEDIA (Paperclip) -> Document Bubble
-                                      if (type == 'file' || type == 'document' || type == 'audio') {
+                                      // 2️⃣ ATTACHMENT ICON MEDIA (Paperclip)
+                                      if (type == 'file' || type == 'document') { // Removed 'audio' here as it's handled above
                                          return MediaBubbleWidget(message: data, isMe: isMe);
                                       }
                                       
-                                      // Fallback for mixed cases (e.g. file sent as image via old endpoint but mime is distinct)
+                                      // Fallbacks
                                       if (mimeType.startsWith('image')) return MediaBubbleWidget(message: data, isMe: isMe);
                                       if (mimeType.startsWith('video')) return MediaBubbleWidget(message: data, isMe: isMe);
                                       
-                                      // Final Fallback for unclassified files
                                       if (data.containsKey('filename') || data.containsKey('url')) {
                                          return MediaBubbleWidget(message: data, isMe: isMe);
                                       }
 
-                                      // Default Text
-                                      return _buildHighlightText(
-                                        content, 
-                                        _isSearching ? _searchController.text : '',
-                                        isMe ? Colors.white : Colors.black
+                                      // Default Text with INLINE Timestamp
+                                      // We wrap text + timestamp in a Stack/Wrap concept
+                                      // 3. New Column Layout (WhatsApp Style)
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                           // Rich Text Content
+                                           Padding(
+                                             padding: const EdgeInsets.only(right: 48, bottom: 4),
+                                             child: _buildHighlightText(
+                                                content, 
+                                                _isSearching ? _searchController.text : '',
+                                                isMe ? Colors.white : Colors.black
+                                              ),
+                                           ),
+                                           const SizedBox(height: 2),
+                                           // Timestamp Row (Bottom Right)
+                                           Row(
+                                             mainAxisSize: MainAxisSize.min,
+                                             mainAxisAlignment: MainAxisAlignment.end,
+                                             children: [
+                                                if (data['expiresAt'] != null)
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(right: 4),
+                                                      child: Icon(Icons.timer_outlined, size: 10, color: isMe ? Colors.white70 : Colors.grey[600]),
+                                                    ),
+                                                  Text(
+                                                    data['timestamp'] != null 
+                                                      ? DateFormat('h:mm a').format(DateTime.parse(data['timestamp']).toLocal())
+                                                      : '',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: isMe ? Colors.white70 : Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                  if (isMe) ...[
+                                                    const SizedBox(width: 4),
+                                                    Icon(
+                                                      (data['status'] == 'seen' || data['status'] == 'delivered') 
+                                                          ? Icons.done_all 
+                                                          : Icons.done,
+                                                      size: 14, 
+                                                      color: data['status'] == 'seen' 
+                                                          ? const Color(0xFF53BDEB) 
+                                                          : Colors.white70
+                                                    )
+                                                  ]
+                                             ],
+                                           )
+                                        ],
                                       );
                                     }
                                   ),
-
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (data['expiresAt'] != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(right: 4),
-                                        child: Icon(Icons.timer_outlined, size: 10, color: isMe ? Colors.white70 : Colors.grey[600]),
-                                      ),
-                                    Text(
-                                      data['timestamp'] != null 
-                                        ? DateFormat('h:mm a').format(DateTime.parse(data['timestamp']).toLocal())
-                                        : '',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: isMe ? Colors.white70 : Colors.grey[600],
-                                      ),
-                                    ),
-                                    if (isMe) ...[
-                                      const SizedBox(width: 4),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        (data['status'] == 'seen' || data['status'] == 'delivered') 
-                                            ? Icons.done_all 
-                                            : Icons.done,
-                                        size: 14, 
-                                        color: data['status'] == 'seen' 
-                                            ? const Color(0xFF53BDEB) 
-                                            : Colors.white70
-                                      )
-                                    ]
-                                  ],
-                                )
-                              ],
-                            ),
+                                  // Removed external SizedBox and Row for timestamp
+                                ],
+                              ),
                           ),
                         );
                       },
