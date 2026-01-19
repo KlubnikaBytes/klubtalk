@@ -28,6 +28,7 @@ import 'package:whatsapp_clone/widgets/sticker_message_widget.dart';
 import 'package:whatsapp_clone/models/sticker_model.dart';
 
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
+import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 import 'package:whatsapp_clone/screens/contact_info_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -1128,14 +1129,20 @@ class _ChatScreenState extends State<ChatScreen> {
             IconButton(
               icon: const Icon(Icons.videocam), 
               onPressed: () {
+                if (!_isPeerOnline) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text("${widget.contact?.name ?? 'User'} is unavailable"))
+                   );
+                   return;
+                }
+                
                 Navigator.push(
                   context, 
                   MaterialPageRoute(
-                    builder: (context) => CallScreen(
+                    builder: (context) => OutgoingCallScreen(
                       peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
                       peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
-                      isCaller: true,
-                      peerId: widget.peerId, // This is the firebaseUid of the other user
+                      peerId: widget.peerId,
                       isVideo: true,
                     )
                   )
@@ -1145,13 +1152,19 @@ class _ChatScreenState extends State<ChatScreen> {
             IconButton(
               icon: const Icon(Icons.call), 
               onPressed: () {
+                if (!_isPeerOnline) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text("${widget.contact?.name ?? 'User'} is unavailable"))
+                   );
+                   return;
+                }
+                
                 Navigator.push(
                   context, 
                   MaterialPageRoute(
-                    builder: (context) => CallScreen(
+                    builder: (context) => OutgoingCallScreen(
                       peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
                       peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
-                      isCaller: true,
                       peerId: widget.peerId,
                       isVideo: false,
                     )

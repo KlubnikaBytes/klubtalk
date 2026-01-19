@@ -121,4 +121,40 @@ class ContactService {
       rethrow;
     }
   }
+  // Resolve Contact Name from Peer ID
+  Future<String> resolveContactName(String peerId) async {
+     try {
+       // 1. Get All Registered Users (to find phone number of peerId)
+       // Optimization: In a real app, use GET /users/:id or check local DB. 
+       // Here we rely on getRegisteredUsers as per constraints.
+       List<UserModel> users = await getRegisteredUsers();
+       
+       final user = users.firstWhere(
+           (u) => u.uid == peerId, 
+           orElse: () => UserModel(uid: '', phoneNumber: '', name: 'Unknown')
+       );
+       
+       if (user.phoneNumber.isEmpty) return 'Unknown'; // Fallback
+       
+       // 2. Get Device Contacts
+       final deviceContacts = await getDeviceContacts();
+       final normalizedUserPhone = normalizePhoneNumber(user.phoneNumber);
+       
+       // 3. Match
+       for (var contact in deviceContacts) {
+          for (var phone in contact.phones) {
+             if (normalizePhoneNumber(phone.number) == normalizedUserPhone) {
+                return contact.displayName;
+             }
+          }
+       }
+       
+       // 4. Fallback to User Name if not in contacts
+       return user.name.isNotEmpty ? user.name : user.phoneNumber;
+       
+     } catch (e) {
+       print("Name Resolution Error: $e");
+       return 'Unknown';
+     }
+  }
 }

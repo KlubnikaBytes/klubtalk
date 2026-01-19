@@ -164,38 +164,47 @@ exports.init = (server) => {
         });
 
         // --- WebRTC Signaling ---
-        socket.on("join-user", (userId) => {
-            // Already joined in connection
-        });
-
-        socket.on("call-user", async (data) => {
+        // --- WebRTC Signaling ---
+        socket.on("video_call_request", async (data) => {
             console.log(`Call initiated from ${data.from} to ${data.to}`);
-            io.to(data.to).emit("incoming-call", {
-                from: data.from,
+            // Broadcast to receiver
+            io.to(data.to).emit("video_call_request", {
+                from: data.from, // Caller ID
                 callType: data.callType,
                 offer: data.offer
             });
 
             try {
+                // Log call in DB
                 const newCall = new Call({ from: data.from, to: data.to, type: data.callType });
                 await newCall.save();
             } catch (e) { console.error("Call Log Error:", e); }
         });
 
-        socket.on("accept-call", (data) => {
-            io.to(data.to).emit("call-accepted", { answer: data.answer });
+        socket.on("video_call_accept", (data) => {
+            // data: { to: callerId, from: receiverId, answer: ... }
+            io.to(data.to).emit("video_call_accept", {
+                from: data.from,
+                answer: data.answer
+            });
         });
 
-        socket.on("reject-call", (data) => {
-            io.to(data.to).emit("call-rejected");
+        socket.on("video_call_reject", (data) => {
+            // data: { to: callerId }
+            io.to(data.to).emit("video_call_reject", { from: socket.uid });
         });
 
-        socket.on("end-call", (data) => {
-            io.to(data.to).emit("call-ended");
+        socket.on("video_call_end", (data) => {
+            // data: { to: peerId }
+            io.to(data.to).emit("video_call_end", { from: socket.uid });
         });
 
-        socket.on("ice-candidate", (data) => {
-            io.to(data.to).emit("ice-candidate", { candidate: data.candidate });
+        socket.on("video_call_ice", (data) => {
+            // data: { to: peerId, candidate: ... }
+            io.to(data.to).emit("video_call_ice", {
+                candidate: data.candidate,
+                from: socket.uid
+            });
         });
 
         // 5. Check Online Status (Initial Load)

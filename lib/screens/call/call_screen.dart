@@ -24,32 +24,29 @@ class CallScreen extends StatefulWidget {
 }
 
 class _CallScreenState extends State<CallScreen> {
-  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
-  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-  final WebrtcService _webrtcService = WebrtcService(); // Singleton
+  // Renderers are now managed by WebrtcService
+  final WebrtcService _webrtcService = WebrtcService();
 
   Timer? _callTimer;
   int _seconds = 0;
-  String _status = "Initializing...";
+  String _status = "Connecting...";
   bool _micEnabled = true;
   bool _videoEnabled = true;
 
   @override
   void initState() {
     super.initState();
-    _initRenderers();
+    _setupListeners();
   }
   
-  Future<void> _initRenderers() async {
-    await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
-    
-    _webrtcService.onLocalStream = (stream) {
-      setState(() => _localRenderer.srcObject = stream);
+  void _setupListeners() {
+    // Just listen for updates to trigger rebuilds
+    _webrtcService.onLocalStream = (_) {
+      if(mounted) setState(() {});
     };
     
-    _webrtcService.onRemoteStream = (stream) {
-      setState(() => _remoteRenderer.srcObject = stream);
+    _webrtcService.onRemoteStream = (_) {
+      if(mounted) setState(() {});
     };
     
     _webrtcService.onCallStateChange = (status) {
@@ -62,17 +59,9 @@ class _CallScreenState extends State<CallScreen> {
        }
     };
     
-    // Start Call Logic
-    if (widget.isCaller && widget.peerId != null) {
-       _webrtcService.initCall(widget.peerId!, widget.isVideo);
-       setState(() => _status = "Calling...");
-    } else {
-       // Answer logic handled by IncomingCallScreen before pushing this, 
-       // but wait - we typically push THIS screen then handle answer.
-       // Actually Incoming calls usually passed via 'IncomingCallScreen' 
-       // which then navigates here upon ACCEPT.
-       // So if !isCaller, we assume call is connected or connecting.
-       // We rely on WebrtcService state if already set up.
+    // Initial State Check
+    if (_webrtcService.localStream != null || _webrtcService.remoteStream != null) {
+       setState(() {});
     }
   }
 
@@ -91,11 +80,17 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   void dispose() {
-    _localRenderer.dispose();
-    _remoteRenderer.dispose();
     _callTimer?.cancel();
-    // End call if not already? Or assume service handles global state?
-    // Usually end call on dispose if active.
+    
+    // Safety: Clear listeners so we don't get updates while disposing
+    _webrtcService.onCallStateChange = null; 
+    _webrtcService.onLocalStream = null;
+    _webrtcService.onRemoteStream = null;
+
+    // Do NOT dispose service renderers here, as they might be used if we navigate back/forth 
+    // strictly speaking call ends when we pop this screen usually.
+    // We already have 'endCall' logic in the button.
+    // If user swipes back, we should end call.
     _webrtcService.endCall();
     super.dispose();
   }
@@ -111,7 +106,7 @@ class _CallScreenState extends State<CallScreen> {
              // Remote (Full Screen)
              Positioned.fill(
                child: RTCVideoView(
-                 _remoteRenderer, 
+                 _webrtcService.remoteRenderer, 
                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                ),
              ),
@@ -124,7 +119,7 @@ class _CallScreenState extends State<CallScreen> {
                child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: RTCVideoView(
-                    _localRenderer,
+                    _webrtcService.localRenderer,
                     mirror: true,
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover
                   ),
@@ -191,7 +186,7 @@ class _CallScreenState extends State<CallScreen> {
                    IconButton(
                      onPressed: () {
                         _webrtcService.endCall();
-                        Navigator.pop(context);
+                        if (mounted) Navigator.pop(context);
                      },
                      icon: const Icon(Icons.call_end, color: Colors.white, size: 30),
                      style: IconButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(15)),

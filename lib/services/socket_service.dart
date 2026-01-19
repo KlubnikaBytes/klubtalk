@@ -108,11 +108,11 @@ class SocketService {
     });
 
     // --- Call Events (Preserved) ---
-    _socket!.on('incoming-call', (data) => _callController.add({'event': 'incoming-call', 'data': data}));
-    _socket!.on('call-accepted', (data) => _callController.add({'event': 'call-accepted', 'data': data}));
-    _socket!.on('call-rejected', (data) => _callController.add({'event': 'call-rejected', 'data': data}));
-    _socket!.on('call-ended', (data) => _callController.add({'event': 'call-ended', 'data': data}));
-    _socket!.on('ice-candidate', (data) => _callController.add({'event': 'ice-candidate', 'data': data}));
+    _socket!.on('video_call_request', (data) => _callController.add({'event': 'video_call_request', 'data': data}));
+    _socket!.on('video_call_accept', (data) => _callController.add({'event': 'video_call_accept', 'data': data}));
+    _socket!.on('video_call_reject', (data) => _callController.add({'event': 'video_call_reject', 'data': data}));
+    _socket!.on('video_call_end', (data) => _callController.add({'event': 'video_call_end', 'data': data}));
+    _socket!.on('video_call_ice', (data) => _callController.add({'event': 'video_call_ice', 'data': data}));
   }
 
   void disconnect() {

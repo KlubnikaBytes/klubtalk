@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
+import 'package:whatsapp_clone/services/contact_service.dart';
 
-class IncomingCallScreen extends StatelessWidget {
+class IncomingCallScreen extends StatefulWidget {
   final String callerName;
   final String callerAvatar;
   final String callType; // 'audio' or 'video'
@@ -17,8 +19,48 @@ class IncomingCallScreen extends StatelessWidget {
   });
 
   @override
+  State<IncomingCallScreen> createState() => _IncomingCallScreenState();
+}
+
+class _IncomingCallScreenState extends State<IncomingCallScreen> {
+  String _displayName = "";
+  bool _isAccepting = false; // Fix: duplicate logic / pop safety
+
+  @override
+  void initState() {
+    super.initState();
+    _displayName = widget.callerName; // Initial fallback
+    _resolveName();
+  }
+
+  Future<void> _resolveName() async {
+     try {
+       String? peerId = widget.callData['from'];
+       if (peerId != null) {
+          String name = await ContactService().resolveContactName(peerId);
+          if (mounted && name != 'Unknown') {
+             setState(() => _displayName = name);
+          }
+       }
+     } catch (e) {
+       print("Error resolving name: $e");
+     }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        // Fix: If we are midway accepting, DO NOT REJECT
+        if (_isAccepting) return; 
+
+        // Handle Back Button as Reject
+        WebrtcService().rejectCall(widget.callData['from']);
+        if(mounted) Navigator.pop(context);
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF101D25), // WhatsApp Call Dark BG
       body: SafeArea(
         child: Column(
@@ -27,26 +69,28 @@ class IncomingCallScreen extends StatelessWidget {
             // Caller Info
             CircleAvatar(
               radius: 50,
-              backgroundImage: NetworkImage(callerAvatar.isNotEmpty ? callerAvatar : 'https://ui-avatars.com/api/?name=$callerName'),
+              backgroundImage: NetworkImage(widget.callerAvatar.isNotEmpty 
+                  ? widget.callerAvatar 
+                  : 'https://ui-avatars.com/api/?name=$_displayName'),
             ),
             const SizedBox(height: 20),
             Text(
-              callerName,
+              _displayName,
               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.normal),
             ),
             const SizedBox(height: 10),
-            const Text(
-              "Incoming WebWhatsapp Call",
-              style: TextStyle(color: Colors.white54, fontSize: 16),
+            Text(
+              "Incoming ${widget.callType == 'video' ? 'Video' : 'Voice'} Call",
+              style: const TextStyle(color: Colors.white54, fontSize: 16),
             ),
              const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                 Icon(callType == 'video' ? Icons.videocam : Icons.call, color: Colors.white54, size: 20),
+                 Icon(widget.callType == 'video' ? Icons.videocam : Icons.call, color: Colors.white54, size: 20),
                  const SizedBox(width: 8),
                  Text(
-                   "WhatsApp ${callType == 'video' ? 'Video' : 'Voice'} Call",
+                   "WhatsApp ${widget.callType == 'video' ? 'Video' : 'Voice'} Call",
                    style: const TextStyle(color: Colors.white54, fontSize: 16),
                  ),
               ],
@@ -63,51 +107,63 @@ class IncomingCallScreen extends StatelessWidget {
                    // Reject (Red)
                    Column(
                      children: [
-                       GestureDetector(
-                         onTap: () {
-                            // Emit Reject
-                            WebrtcService().endCall(); // Or reject socket logic
-                            Navigator.pop(context);
-                         },
-                         child: const CircleAvatar(
-                           radius: 35,
-                           backgroundColor: Colors.redAccent,
-                           child: Icon(Icons.call_end, color: Colors.white, size: 30),
-                         ),
-                       ),
-                       const SizedBox(height: 8),
-                       const Text("Decline", style: TextStyle(color: Colors.white54))
-                     ],
-                   ),
-                   
-                   // Accept (Green)
-                   Column(
-                     children: [
-                        GestureDetector(
-                         onTap: () async {
-                            // initialize service with incoming data
-                            // First pop this screen, then push CallScreen? Or Replace?
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => CallScreen(
-                                  peerName: callerName,
-                                  peerAvatar: callerAvatar,
-                                  isCaller: false,
-                                  isVideo: callType == 'video',
-                                )
-                              )
-                            );
-                            
-                            // Trigger WebRTC answer logic
-                            await WebrtcService().handleIncomingCall(callData);
-                         },
-                         child: const CircleAvatar(
-                           radius: 35,
-                           backgroundColor: Colors.green,
-                           child: Icon(Icons.call, color: Colors.white, size: 30),
-                         ),
-                       ),
+                         GestureDetector(
+                          onTap: () {
+                             if (_isAccepting) return;
+                             WebrtcService().rejectCall(widget.callData['from']);
+                             if (mounted) Navigator.pop(context);
+                          },
+                          child: const CircleAvatar(
+                            radius: 35,
+                            backgroundColor: Colors.redAccent,
+                            child: Icon(Icons.call_end, color: Colors.white, size: 30),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text("Decline", style: TextStyle(color: Colors.white54))
+                      ],
+                    ),
+                    
+                    // Accept (Green)
+                    Column(
+                      children: [
+                         GestureDetector(
+                          onTap: () async {
+                             if (_isAccepting) return;
+                             setState(() => _isAccepting = true); // Lock
+
+                             try {
+                               // Initialize incoming call first
+                               await WebrtcService().handleIncomingCall(widget.callData);
+
+                               if(mounted) {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CallScreen(
+                                        peerName: _displayName,
+                                        peerAvatar: widget.callerAvatar,
+                                        isCaller: false,
+                                        isVideo: widget.callType == 'video',
+                                      )
+                                    )
+                                  );
+                               }
+                             } catch (e) {
+                               print("Failed to accept call: $e");
+                               setState(() => _isAccepting = false); // Unlock
+                               WebrtcService().endCall(); 
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 SnackBar(content: Text("Failed to connect: $e"))
+                               );
+                             }
+                          },
+                          child: const CircleAvatar(
+                            radius: 35,
+                            backgroundColor: Colors.green,
+                            child: Icon(Icons.call, color: Colors.white, size: 30),
+                          ),
+                        ),
                        const SizedBox(height: 8),
                        const Text("Accept", style: TextStyle(color: Colors.white54))
                      ],
@@ -118,6 +174,7 @@ class IncomingCallScreen extends StatelessWidget {
           ],
         ),
       ),
+    )
     );
   }
 }

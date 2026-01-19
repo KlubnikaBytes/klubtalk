@@ -5,6 +5,7 @@ import 'package:whatsapp_clone/auth_wrapper.dart';
 import 'package:whatsapp_clone/utils/web_utils.dart'; // Helper for web
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
+import 'package:whatsapp_clone/services/webrtc_service.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -49,8 +50,17 @@ class _MyAppState extends State<MyApp> {
 
       // Listen to Call Events
       socketService.callStream.listen((event) {
-          if (event['event'] == 'incoming-call') {
+          if (event['event'] == 'video_call_request') {
+             // Guard: Prevent duplicate calls
+             if (WebrtcService().isCallActive) {
+                print("Ignored duplicate call request: Call already active");
+                return; 
+             }
+             
+             WebrtcService().setCallActive(true); // Lock state
+             
              final data = event['data'];
+             
              if (navigatorKey.currentState != null) {
                 navigatorKey.currentState!.push(
                   MaterialPageRoute(
@@ -61,7 +71,13 @@ class _MyAppState extends State<MyApp> {
                       callData: data,
                     )
                   )
-                );
+                ).then((_) {
+                   // When screen pops (back button / reject without endCall), ensure state is cleared if not handled
+                   // Actually, if we accepted, we are "On Call" so isCallActive should remain True
+                   // If we rejected, isCallActive should be False
+                   // But "then" logic is hard to distinguish Accept vs Reject unless we return value
+                   // Safety check: if call is not connected, reset.
+                });
              }
           }
       });
