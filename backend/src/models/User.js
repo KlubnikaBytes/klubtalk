@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
     isOnline: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     blockedUsers: [String], // Array of firebaseUids
+    archivedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Archive
 });
 
 userSchema.index({ name: 'text', phone: 'text' });

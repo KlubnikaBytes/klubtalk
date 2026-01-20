@@ -16,8 +16,19 @@ exports.getMyChats = async (req, res) => {
         const chats = await Chat.find({ participants: req.uid })
             .populate('participants', 'name phone avatar about isOnline lastSeen')
             .populate('lastMessage')
+            .lean() // Use lean to modify the object
             .sort({ updatedAt: -1 });
-        res.json(chats);
+
+        // Fetch User to get archived list
+        const user = await User.findById(req.uid).select('archivedChats');
+        const archivedIds = user?.archivedChats?.map(id => id.toString()) || [];
+
+        const enrichedChats = chats.map(chat => ({
+            ...chat,
+            isArchivedSelf: archivedIds.includes(chat._id.toString())
+        }));
+
+        res.json(enrichedChats);
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
@@ -131,8 +142,22 @@ exports.toggleFavorite = async (req, res) => {
 };
 
 exports.toggleArchive = async (req, res) => {
-    // Requires 'isArchived'. Stub.
-    res.json({ success: true });
+    try {
+        const { chatId } = req.body;
+        const user = await User.findById(req.uid);
+
+        const index = user.archivedChats.indexOf(chatId);
+        if (index === -1) {
+            user.archivedChats.push(chatId);
+        } else {
+            user.archivedChats.splice(index, 1);
+        }
+
+        await user.save();
+        res.json({ success: true, isArchived: index === -1 });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 };
 
 exports.muteChat = async (req, res) => {

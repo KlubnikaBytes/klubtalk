@@ -74,7 +74,6 @@ class StickerService {
     try {
       // 1. Try Fetching from API
       // Since API might not exist yet, we wrap in try/catch and fallback
-      /*
       final token = await _getToken();
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/stickers/packs'),
@@ -86,7 +85,6 @@ class StickerService {
         _packs = data.map((json) => StickerPack.fromJson(json)).toList();
         return _packs;
       }
-      */
     } catch (e) {
       debugPrint('Error fetching packs: $e');
     }

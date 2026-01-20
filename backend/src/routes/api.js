@@ -86,4 +86,18 @@ router.get('/status/feed', verifyToken, statusController.getFeed);
 router.post('/status/view', verifyToken, statusController.viewStatus);
 router.delete('/status/:statusId', verifyToken, statusController.deleteStatus);
 
+const callController = require('../controllers/callController');
+
+// --- CALL ROUTES ---
+router.post('/calls/save', verifyToken, callController.saveCall);
+router.get('/calls/history/:userId', verifyToken, callController.getCallHistory);
+
+const stickerController = require('../controllers/stickerController');
+
+// --- STICKER ROUTES ---
+router.get('/stickers/packs', stickerController.getPacks); // Public or Protected? Service sends token if available. 
+// Ideally protected if we want to track usage, but stickers are general asset. Let's make it verifyToken optional or verified. 
+// Service sends token.
+router.get('/stickers/pack/:id', stickerController.getPackDetails);
+
 module.exports = router;

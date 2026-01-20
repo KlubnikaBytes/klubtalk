@@ -61,4 +61,10 @@ class ChatSessionStore {
   bool isMuted(String chatId) => mutedChatIds.value.contains(chatId);
   bool isMarkedUnread(String chatId) => markedUnreadChatIds.value.contains(chatId);
   bool isDeleted(String chatId) => deletedChatIds.value.contains(chatId);
+  
+  // Refresh Signal for cross-screen updates
+  final ValueNotifier<int> refreshTrigger = ValueNotifier(0);
+  void triggerRefresh() {
+    refreshTrigger.value++;
+  }
 }

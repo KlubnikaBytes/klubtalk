@@ -30,27 +30,41 @@ class SocketService {
   bool get isConnected => _isConnected;
   IO.Socket? get socket => _socket;
 
-  void connect() {
-    final token = AuthService().token;
-    if (token == null) return;
-
-    if (_socket != null && _socket!.connected) return;
-
-    _socket = IO.io(ApiConfig.baseUrl, IO.OptionBuilder()
+  IO.Socket _buildSocket(String token) {
+     return IO.io(ApiConfig.baseUrl, IO.OptionBuilder()
       .setTransports(['websocket'])
       .setAuth({'token': token})
       .disableAutoConnect()
       .build()
     );
+  }
 
+  void connect() {
+    final token = AuthService().token;
+    if (token == null) return;
+
+    // Singleton check: If socket exists, check status
+    if (_socket != null) {
+       if (_socket!.connected) return;
+       // If disconnected, try reconnecting existing instance first or checking if we need new auth
+       _socket!.connect();
+       return;
+    }
+
+    _socket = _buildSocket(token);
+    _setupListeners();
     _socket!.connect();
+  }
+
+  void _setupListeners() {
+    if (_socket == null) return;
 
     _socket!.onConnect((_) {
-      print('Socket Connected: ${_socket!.id}');
+      print('Socket Connected: ${_socket?.id}');
       _isConnected = true;
       final userId = AuthService().currentUserId;
       if (userId != null) {
-        _socket!.emit('join-user', userId); // Join own room for calls/private events
+        _socket!.emit('join-user', userId);
       }
     });
 
@@ -70,12 +84,10 @@ class SocketService {
 
     // --- Message Events ---
     _socket!.on('new_message', (data) {
-      print('New Message Received: $data');
       _messageController.add(Map<String, dynamic>.from(data));
     });
 
     _socket!.on('message_sent', (data) {
-       // Ack from backend for own message
        if (data['message'] != null) {
           final msg = Map<String, dynamic>.from(data['message']);
           if (data['tempId'] != null) {
@@ -86,12 +98,10 @@ class SocketService {
     });
     
     _socket!.on('message_delivered', (data) {
-       print("SocketService: Received message_delivered: $data");
        _deliveryStatusController.add(Map<String, dynamic>.from(data));
     });
     
     _socket!.on('messages_seen_update', (data) {
-       print("SocketService: Received messages_seen_update: $data");
        _seenStatusController.add(Map<String, dynamic>.from(data));
     });
 
@@ -107,7 +117,7 @@ class SocketService {
        _onlineStatusController.add(Map<String, dynamic>.from(data));
     });
 
-    // --- Call Events (Preserved) ---
+    // --- Call Events ---
     _socket!.on('video_call_request', (data) => _callController.add({'event': 'video_call_request', 'data': data}));
     _socket!.on('video_call_accept', (data) => _callController.add({'event': 'video_call_accept', 'data': data}));
     _socket!.on('video_call_reject', (data) => _callController.add({'event': 'video_call_reject', 'data': data}));

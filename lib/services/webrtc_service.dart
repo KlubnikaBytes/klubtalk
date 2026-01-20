@@ -1,6 +1,9 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:whatsapp_clone/config/api_config.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef CallStateCallback = void Function(String status);
@@ -61,10 +64,14 @@ class WebrtcService {
   // State
   bool isAudioEnabled = true;
   bool isVideoEnabled = true;
+  DateTime? _callStartTime;
+  bool _isCaller = false;
+  String? _remoteUserId; // Peer ID (Connection ID or Peer ID)
 
   // Track Global Call State to prevent duplicate screens
   bool _isCallActive = false; 
   bool get isCallActive => _isCallActive;
+  bool _logSaved = false;
 
   void setCallActive(bool active) {
     _isCallActive = active;
@@ -104,6 +111,11 @@ class WebrtcService {
     if (_isCallActive) return; 
     _isCallActive = true;
     _peerId = peerId;
+    _remoteUserId = peerId;
+    _isCaller = true;
+    _logSaved = false;
+    isVideoEnabled = video;
+    isAudioEnabled = true;
     
     try {
       await initializeRenderers();
@@ -182,6 +194,9 @@ class WebrtcService {
         }
 
         _connectionId = data['from']; 
+        _remoteUserId = data['from'];
+        _isCaller = false; 
+        _logSaved = false;
         bool video = data['callType'] == 'video';
         final offerMap = data['offer'];
         if (offerMap == null) throw Exception("No offer data received");
@@ -229,6 +244,7 @@ class WebrtcService {
         });
         
         onCallStateChange?.call("Connecting...");
+        _callStartTime = DateTime.now(); // Start counting when accepted/connected (approx)
         
       } catch (e) {
         print("Error handling incoming call: $e");
@@ -245,6 +261,7 @@ class WebrtcService {
             RTCSessionDescription(data['answer']['sdp'], data['answer']['type'])
          );
          onCallStateChange?.call("On Call");
+         _callStartTime = DateTime.now();
       }
   }
   
@@ -311,13 +328,78 @@ class WebrtcService {
         SocketService().emit('video_call_end', {'to': _connectionId ?? _peerId});
      }
      
-     _peerId = null;
-     _connectionId = null;
-     
      if (!retainState) {
         _isCallActive = false;
         onCallStateChange?.call("Ended");
      }
+
+     // Save Log
+     if (_remoteUserId != null && !_logSaved) {
+        _logSaved = true;
+        final duration = _callStartTime != null 
+             ? DateTime.now().difference(_callStartTime!).inSeconds 
+             : 0;
+        
+        // Determine Status
+        String status = 'completed';
+        if (duration == 0) {
+           status = _isCaller ? 'missed' : 'rejected'; 
+        }
+
+        saveCallLog(
+           callerId: _isCaller ? AuthService().currentUserId ?? '' : _remoteUserId!,
+           receiverId: _isCaller ? _remoteUserId! : AuthService().currentUserId ?? '',
+           callType: isVideoEnabled ? 'video' : 'voice', 
+           status: status,
+           duration: duration
+        );
+        
+        _callStartTime = null;
+        _remoteUserId = null;
+     }
+     
+     _peerId = null;
+     _connectionId = null;
+  }
+
+  Future<void> saveCallLog({
+    required String callerId,
+    required String receiverId,
+    required String callType,
+    required int duration,
+    required String status,
+  }) async {
+    try {
+      final token = AuthService().token;
+      if (token == null) return;
+      
+      // Validation: Ensure IDs are valid string IDs (basic check)
+      if (callerId.isEmpty || receiverId.isEmpty || callerId == "null" || receiverId == "null") {
+          print("⚠️ Skipping saveCallLog: Invalid caller/receiver ID. From: $callerId To: $receiverId");
+          return;
+      }
+
+      final body = {
+          "from": callerId,
+          "to": receiverId,
+          "type": callType,
+          "status": status,
+          "duration": duration,
+          "callTime": DateTime.now().toIso8601String(),
+      };
+
+      await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/calls/save'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+        body: jsonEncode(body)
+      );
+      print("✅ Call Log Saved: ${jsonEncode(body)}");
+    } catch (e) {
+      print("❌ Failed to save call log: $e");
+    }
   }
 
   // Toggles

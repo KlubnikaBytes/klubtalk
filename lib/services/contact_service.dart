@@ -149,12 +149,34 @@ class ContactService {
           }
        }
        
-       // 4. Fallback to User Name if not in contacts
-       return user.name.isNotEmpty ? user.name : user.phoneNumber;
-       
+        // 4. Fallback to User Name if not in contacts
+        // STRICT RULE: If not in contacts, show Phone Number ONLY. 
+        // Do NOT show user.name from backend.
+        return user.phoneNumber.isNotEmpty ? user.phoneNumber : 'Unknown';
+        
+      } catch (e) {
+        print("Name Resolution Error: $e");
+        return 'Unknown';
+      }
+   }
+
+   // NEW: Strict Phone Number Resolver
+   Future<String> getContactNameFromPhone(String phone) async {
+     try {
+       final normalized = normalizePhoneNumber(phone);
+       final deviceContacts = await getDeviceContacts();
+
+       for (var contact in deviceContacts) {
+          for (var p in contact.phones) {
+             if (normalizePhoneNumber(p.number) == normalized) {
+                return contact.displayName;
+             }
+          }
+       }
+       // If not in contacts, return phone number
+       return phone;
      } catch (e) {
-       print("Name Resolution Error: $e");
-       return 'Unknown';
+       return phone;
      }
-  }
+   }
 }

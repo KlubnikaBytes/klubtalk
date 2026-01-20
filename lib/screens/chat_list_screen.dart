@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
+import 'package:whatsapp_clone/services/contact_service.dart'; // Import ContactService
 import 'package:whatsapp_clone/screens/chat_screen.dart';
 import 'package:whatsapp_clone/screens/new_chat_screen.dart';
 import 'package:whatsapp_clone/screens/group_participant_select_screen.dart';
@@ -18,6 +19,7 @@ import 'package:whatsapp_clone/widgets/global_search_overlay.dart';
 import 'package:whatsapp_clone/screens/camera/universal_camera_screen.dart';
 import 'package:whatsapp_clone/screens/status/status_tab.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
+import 'package:whatsapp_clone/screens/call/call_logs_screen.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -50,10 +52,13 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    // 3 Tabs: Chats, Updates, Calls
+    _tabController = TabController(length: 3, vsync: this);
     
     _searchController.addListener(_onSearchChanged);
   }
+
+  String _chatFilter = 'all';
 
   @override
   void dispose() {
@@ -188,10 +193,41 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
             TabBarView(
               controller: _tabController,
               children: [
-                 ChatListScreen(filter: 'all', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+                 // Tab 1: Chats with Sub-Navbar
+                 Column(
+                   children: [
+                     // Sub-Navbar (Filters)
+                     Container(
+                       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+                       color: Colors.white, // Distinct background, or transparent
+                       child: SingleChildScrollView(
+                         scrollDirection: Axis.horizontal,
+                         child: Row(
+                           children: [
+                             _buildFilterChip('All', 'all'),
+                             const SizedBox(width: 8),
+                             _buildFilterChip('Unread', 'unread'),
+                             const SizedBox(width: 8),
+                             _buildFilterChip('Favourites', 'favorites'),
+                             const SizedBox(width: 8),
+                             _buildFilterChip('Groups', 'groups'),
+                             const SizedBox(width: 8),
+                             _buildFilterChip('Communities', 'communities'),
+                           ],
+                         ),
+                       ),
+                     ),
+                     
+                     // Filtered List
+                     Expanded(child: ChatListScreen(filter: _chatFilter, isWeb: widget.isWeb, onChatSelected: widget.onChatSelected)),
+                   ],
+                 ),
+                 
+                 // Tab 2: Updates
                  const StatusTab(),
-                 ChatListScreen(filter: 'unread', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
-                 ChatListScreen(filter: 'favorites', isWeb: widget.isWeb, onChatSelected: widget.onChatSelected),
+                 
+                 // Tab 3: Calls
+                 const CallLogsScreen(),
               ],
             ),
             if (_isSearching)
@@ -258,13 +294,44 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
       ],
       bottom: TabBar(
         controller: _tabController,
-        indicatorColor: Colors.white,
+        indicatorColor: Colors.white, // Keep OG indicator
+        // Make Sub-Navbar distinct? The user said "keep OG navbar design same".
+        // So we keep the TabBar as is, just change tabs.
         tabs: const [
-           Tab(text: 'Convo'),
+           Tab(text: 'Chats'),
            Tab(text: 'Updates'),
-           Tab(text: 'Unread'),
-           Tab(text: 'Favorites'),
+           Tab(text: 'Calls'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, String value) {
+    final isSelected = _chatFilter == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _chatFilter = isSelected ? 'all' : value; // Toggle off to 'all' if tapped again? Or just select.
+          // WhatsApp behavior: selecting "Unread" filters. Selecting "All" resets.
+          // If I tap "Unread" again, does it deselect? Yes usually.
+          if (isSelected && value != 'all') _chatFilter = 'all';
+          else _chatFilter = value;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFC92136).withOpacity(0.1) : Colors.grey[200], // Red tint if selected, Grey if not
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: isSelected ? const Color(0xFFC92136) : Colors.transparent),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? const Color(0xFFC92136) : Colors.black87,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
@@ -320,6 +387,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void initState() {
     super.initState();
     _loadChats();
+    
+    // Listen for global refreshes (e.g., from Archive screen)
+    _store.refreshTrigger.addListener(() {
+       if (mounted) _loadChats(updateLoading: false);
+    });
+    
     // Real-time updates via Socket
     _socketSub = SocketService().messageStream.listen((data) {
         // When a new message arrives, we can either re-fetch all chats 
@@ -410,12 +483,28 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void _handleAction(String chatId, String action, Map<String, dynamic> chatData) async {
     switch (action) {
       case 'archive':
+        // Optimistic Update
+        setState(() {
+           final index = _chats.indexWhere((c) => (c['_id'] ?? c['id']) == chatId);
+           if (index != -1) {
+              _chats[index]['isArchivedSelf'] = true;
+           }
+        });
         await _chatService.toggleArchive(chatId);
-        _loadChats(updateLoading: false);
+        _store.triggerRefresh(); // Notify other screens (e.g. Main list)
+        _loadChats(updateLoading: false); // Background refresh self
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat archived")));
         break;
       case 'unarchive':
+         // Optimistic Update
+         setState(() {
+           final index = _chats.indexWhere((c) => (c['_id'] ?? c['id']) == chatId);
+           if (index != -1) {
+              _chats[index]['isArchivedSelf'] = false;
+           }
+        });
          await _chatService.toggleArchive(chatId);
+         _store.triggerRefresh(); // Notify other screens
          _loadChats(updateLoading: false);
          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat unarchived")));
          break;
@@ -497,6 +586,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
            if (widget.filter == 'favorites' && !isFavorite) return false;
            
+           final isGroup = chatData['isGroup'] == true;
+           
+           if (widget.filter == 'groups' && !isGroup) return false;
+           
+           // For now, Communities are treated as Groups or empty (since no isCommunity flag logic yet)
+           // If we want to strictly differentiate, we'd need a flag. 
+           // For this UI task, we'll assume currently creating communities marks isGroup=true.
+           // To avoid overlap, maybe communities implies isGroup=true AND valid groupName? 
+           // Let's just create an empty set for communities for now to avoid confusion unless we have data.
+           // User asked not to change backend. 
+           if (widget.filter == 'communities') return false; // Placeholder
+
            return true;
         }).toList();
 
@@ -600,9 +701,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     (u) => (u['_id'] == peerId || u['firebaseUid'] == peerId), 
                     orElse: () => {}
                  );
-                 name = peerData['name'] ?? 'Unknown';
+                 // STRICT NAME LOGIC: Do not use peerData['name']
+                 // We will resolve via FutureBuilder below using peerData['phone']
+                 name = ''; // Placeholder, resolved in FutureBuilder
                  avatarUrl = peerData['avatar'] ?? '';
-                 if (avatarUrl.isEmpty) avatarUrl = 'https://ui-avatars.com/api/?name=$name';
+            }
+
+            // Prepare Future for Name Resolution
+            Future<String> resolveName() async {
+                if (isGroup) return chatData['groupName'] ?? 'Group';
+                final peerId = participants.firstWhere((id) => id != currentUid, orElse: () => 'Unknown');
+                 final peerData = participantsDetails.firstWhere(
+                    (u) => (u['_id'] == peerId || u['firebaseUid'] == peerId), 
+                    orElse: () => {}
+                 );
+                 final phone = peerData['phone'] ?? '';
+                 if (phone.isEmpty) return 'Unknown';
+                 
+                 // Use ContactService strict resolver
+                 return await ContactService().getContactNameFromPhone(phone);
             }
 
             if (chatData['lastMessage'] is Map) {
@@ -622,54 +739,63 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
             // ... (Inside ListView.builder) ...
             
-            return GestureDetector(
-               onLongPress: PlatformHelper.isMobile 
-                  ? () => _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived)
-                  : null,
-               onSecondaryTapUp: (details) {
-                   if (PlatformHelper.isWeb) {
-                      _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived, position: details.globalPosition);
-                   }
-               },
-               child: ListTile(
-                   // ... (Keep existing ListTile details: leading, title, subtitle, trailing, onTap)
-                   leading: AvatarWidget(imageUrl: avatarUrl, radius: 25),
-                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                   subtitle: Row(
-                      children: [
-                        if (isMuted) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.volume_off, size: 14, color: Colors.grey)),
-                        Expanded(child: Text(lastMsgText, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      ],
-                   ),
-                   trailing: Column(
-                     mainAxisAlignment: MainAxisAlignment.center,
-                     crossAxisAlignment: CrossAxisAlignment.end,
-                     children: [
-                       Text(timeStr, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey)),
-                       const SizedBox(height: 4),
-                       Row(
-                         mainAxisSize: MainAxisSize.min,
-                         children: [
-                           if (isFavorite) const Icon(Icons.star, size: 14, color: Colors.grey),
-                           if (unreadCount > 0) ...[
-                             const SizedBox(width: 4),
-                             Container(
-                               padding: const EdgeInsets.all(6),
-                               decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
-                               child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                             )
-                           ]
-                         ],
-                       )
-                     ],
-                   ),
-                   onTap: () {
-                      if (unreadCount > 0) _store.markRead(chatId);
-                      final contact = Contact(name: name, profileImage: avatarUrl, isOnline: true);
-                      final peerId = !isGroup ? participants.firstWhere((id) => id != currentUid, orElse: () => '') : '';
-                      _navigateToChat(context, contact, peerId, chatId, isGroup: isGroup);
+            return FutureBuilder<String>(
+               future: resolveName(),
+               builder: (context, snapshot) {
+                  final displayName = snapshot.data ?? (isGroup ? (chatData['groupName'] ?? 'Group') : 'Loading...');
+                  // If avatar is empty, use display name to generate
+                  final finalAvatarUrl = (avatarUrl.isNotEmpty) ? avatarUrl : 'https://ui-avatars.com/api/?name=$displayName';
+
+                  return GestureDetector(
+                   onLongPress: PlatformHelper.isMobile 
+                      ? () => _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived)
+                      : null,
+                   onSecondaryTapUp: (details) {
+                       if (PlatformHelper.isWeb) {
+                          _showChatMenu(context, chatId, chatData, isGroup, isFavorite, unreadCount > 0, isArchived, position: details.globalPosition);
+                       }
                    },
-                 ),
+                   child: ListTile(
+                       // ... (Keep existing ListTile details: leading, title, subtitle, trailing, onTap)
+                       leading: AvatarWidget(imageUrl: finalAvatarUrl, radius: 25),
+                       title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                       subtitle: Row(
+                          children: [
+                            if (isMuted) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.volume_off, size: 14, color: Colors.grey)),
+                            Expanded(child: Text(lastMsgText, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          ],
+                       ),
+                       trailing: Column(
+                         mainAxisAlignment: MainAxisAlignment.center,
+                         crossAxisAlignment: CrossAxisAlignment.end,
+                         children: [
+                           Text(timeStr, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey)),
+                           const SizedBox(height: 4),
+                           Row(
+                             mainAxisSize: MainAxisSize.min,
+                             children: [
+                               if (isFavorite) const Icon(Icons.star, size: 14, color: Colors.grey),
+                               if (unreadCount > 0) ...[
+                                 const SizedBox(width: 4),
+                                 Container(
+                                   padding: const EdgeInsets.all(6),
+                                   decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
+                                   child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                 )
+                               ]
+                             ],
+                           )
+                         ],
+                       ),
+                       onTap: () {
+                          if (unreadCount > 0) _store.markRead(chatId);
+                          final contact = Contact(name: displayName, profileImage: finalAvatarUrl, isOnline: true);
+                          final peerId = !isGroup ? participants.firstWhere((id) => id != currentUid, orElse: () => '') : '';
+                          _navigateToChat(context, contact, peerId, chatId, isGroup: isGroup);
+                       },
+                     ),
+                );
+               },
             );
           },
         );

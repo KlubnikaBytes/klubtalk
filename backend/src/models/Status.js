@@ -14,6 +14,9 @@ const statusSchema = new mongoose.Schema({
         userId: { type: String, ref: 'User' },
         viewedAt: { type: Date, default: Date.now }
     }],
+    privacy: { type: String, enum: ['contacts', 'exclude', 'only'], default: 'contacts' },
+    allowedUsers: [{ type: String, ref: 'User' }], // For 'only'
+    excludedUsers: [{ type: String, ref: 'User' }], // For 'exclude'
     createdAt: { type: Date, default: Date.now, expires: 86400 } // Auto-delete after 24h
 });
 

@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import 'package:whatsapp_clone/models/status_model.dart';
 import 'package:whatsapp_clone/services/status_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:whatsapp_clone/services/auth_service.dart';
 
 class StatusViewerScreen extends StatefulWidget {
   final UserStatus userStatus;
@@ -115,6 +116,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final status = widget.userStatus.statuses[_currentIndex];
+    final isMe = widget.userStatus.userId == AuthService().currentUserId;
     
     return Scaffold(
       backgroundColor: Colors.black,
@@ -122,8 +124,13 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
         onTapDown: _onTapDown,
         onLongPress: _pause,
         onLongPressUp: _resume,
-        onVerticalDragEnd: (details) {
-           if (details.primaryVelocity! > 0) Navigator.pop(context); // Swipe Down to close
+         onVerticalDragEnd: (details) {
+           if (details.primaryVelocity! > 0) {
+             Navigator.pop(context); // Swipe Down to close
+           } else if (isMe && details.primaryVelocity! < 0) {
+             // Swipe Up for views
+             _showViewers(status);
+           }
         },
         child: Stack(
           fit: StackFit.expand,
@@ -142,9 +149,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
                      style: TextStyle(
                         fontSize: 32, 
                         color: Colors.white,
-                        fontFamily: status.caption, // Using caption field for font or map it? Model has font field? 
-                        // Ah, schema has font but Status model needs update if accessed. 
-                        // For now default.
+                        fontFamily: status.caption, 
                      ),
                    ),
                  ),
@@ -178,7 +183,13 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
                              Text(widget.userStatus.userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                              Text(_formatTime(status.createdAt), style: const TextStyle(color: Colors.white70, fontSize: 12))
                           ],
-                        )
+                        ),
+                        const Spacer(),
+                        if (isMe)
+                           IconButton(
+                             icon: const Icon(Icons.more_vert, color: Colors.white),
+                             onPressed: () => _showMyStatusMenu(status.id),
+                           )
                      ],
                    )
                 ],
@@ -188,17 +199,94 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
             // Caption Overlay (if media)
             if (status.caption != null && status.type != 'text')
                Positioned(
-                 bottom: 20, left: 0, right: 0,
+                 bottom: isMe ? 80 : 20, // Move up if bottom bar exists
+                 left: 0, right: 0,
                  child: Text(
                     status.caption!,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white, fontSize: 18, backgroundColor: Colors.black45),
                  ),
-               )
+               ),
+
+            // View Counter (My Status Only)
+            if (isMe)
+              Positioned(
+                bottom: 20,
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () => _showViewers(status),
+                      child: Column(
+                        children: [
+                           const Icon(Icons.keyboard_arrow_up, color: Colors.white),
+                           const SizedBox(height: 4),
+                           Text(" Viewed by ${status.viewers.length}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
           ],
         ),
       ),
     );
+  }
+
+  void _showMyStatusMenu(String statusId) {
+    _pause();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+           ListTile(
+             leading: const Icon(Icons.delete, color: Colors.red),
+             title: const Text('Delete', style: TextStyle(color: Colors.red)),
+             onTap: () async {
+                Navigator.pop(context); // Close sheet
+                Navigator.pop(context); // Close viewer
+                await StatusService().deleteStatus(statusId);
+             },
+           )
+        ],
+      )
+    ).then((_) => _resume());
+  }
+
+  void _showViewers(Status status) {
+     _pause();
+     showModalBottomSheet(
+       context: context,
+       builder: (context) => Container(
+         height: 300,
+         padding: const EdgeInsets.all(16),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             Text("Viewed by ${status.viewers.length}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+             const SizedBox(height: 10),
+             Expanded(
+               child: status.viewers.isEmpty 
+               ? const Center(child: Text("No views yet"))
+               : ListView.builder(
+                   itemCount: status.viewers.length,
+                   itemBuilder: (context, index) {
+                      final viewerId = status.viewers[index];
+                      // Ideally resolve name
+                      return ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        title: Text("User $viewerId"), // Placeholder
+                      );
+                   },
+                 ),
+             )
+           ],
+         ),
+       )
+     ).then((_) => _resume());
   }
 
   Widget _buildContent(Status status) {

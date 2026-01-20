@@ -25,6 +25,28 @@ const Chat = require('./src/models/Chat');
     } catch (e) { console.error("Auto-Repair Error:", e); }
 })();
 
+// --- Auto-Repair: Clean up broken calls ---
+const Call = require('./src/models/Call');
+(async () => {
+    try {
+        setTimeout(async () => {
+            const result = await Call.deleteMany({
+                $or: [
+                    { from: null },
+                    { to: null },
+                    { from: "null" },
+                    { to: "null" },
+                    { callerPhone: null },
+                    { receiverPhone: null }
+                ]
+            });
+            if (result.deletedCount > 0) {
+                console.log(`🧹 CLEANUP: Deleted ${result.deletedCount} broken calls.`);
+            }
+        }, 3500);
+    } catch (e) { console.error("Auto-Repair Call Error:", e); }
+})();
+
 const app = express();
 
 
@@ -95,5 +117,20 @@ setInterval(async () => {
         }
     } catch (err) {
         console.error('Cleanup Job Error:', err);
+    }
+}, 60000);
+
+// Cleanup Expired Statuses (Every 60 seconds)
+const Status = require('./src/models/Status');
+setInterval(async () => {
+    try {
+        const result = await Status.deleteMany({
+            createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+        if (result.deletedCount > 0) {
+            console.log(`🧹 Status Cleanup: Deleted ${result.deletedCount} expired statuses.`);
+        }
+    } catch (err) {
+        console.error('Status Cleanup Job Error:', err);
     }
 }, 60000);

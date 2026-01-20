@@ -53,12 +53,28 @@ class StatusService {
     );
   }
 
+  Future<void> deleteStatus(String statusId) async {
+    final token = await _getToken();
+    await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/status/$statusId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+    fetchFeed();
+  }
+
   // --- State Management & Helper Methods ---
 
   final List<VoidCallback> _listeners = [];
   bool get isLoading => false;
-  List<dynamic> get recentUpdates => []; // Populated by fetchFeed
-  List<dynamic> get viewedUpdates => [];
+  UserStatus? _myStatus;
+  List<UserStatus> _recentUpdates = [];
+  List<UserStatus> _viewedUpdates = [];
+
+  UserStatus? get myStatus => _myStatus;
+  List<UserStatus> get recentUpdates => _recentUpdates;
+  List<UserStatus> get viewedUpdates => _viewedUpdates;
 
   void addListener(VoidCallback listener) {
     _listeners.add(listener);
@@ -73,23 +89,56 @@ class StatusService {
   }
 
   Future<void> fetchFeed() async {
-      // populate local lists
-      final feed = await getFeed();
-      // Logic to split recent/viewed
-      notifyListeners();
+      try {
+        final feedData = await getFeed();
+        final currentUserId = AuthService().currentUserId;
+
+        List<UserStatus> allStatuses = feedData.map((e) => UserStatus.fromJson(e)).toList();
+
+        // 1. Extract My Status
+        try {
+           _myStatus = allStatuses.firstWhere((s) => s.userId == currentUserId);
+           allStatuses.removeWhere((s) => s.userId == currentUserId);
+        } catch (_) {
+           _myStatus = null;
+        }
+
+        // 2. Separate Recent vs Viewed
+        _recentUpdates = [];
+        _viewedUpdates = [];
+
+        for (var statusGroup in allStatuses) {
+           // Check if ANY status in this group is NOT viewed by me
+           bool hasUnseen = statusGroup.statuses.any((s) {
+              return !s.viewers.contains(currentUserId);
+           });
+
+           if (hasUnseen) {
+             _recentUpdates.add(statusGroup);
+           } else {
+             _viewedUpdates.add(statusGroup);
+           }
+        }
+        
+        notifyListeners();
+      } catch (e) {
+        print("Status Fetch Error: $e");
+      }
   }
-  
-  dynamic get myStatus => null; 
 
   Future<void> createTextStatus({required String text, required String backgroundColor}) async {
       await createStatus('text', text, color: backgroundColor);
+      fetchFeed(); // Refresh after create
   }
 
   Future<void> createMediaStatus({required File file, String caption = '', bool isVideo = false}) async {
        final uploadService = MediaUploadService();
        final type = isVideo ? 'video' : 'image';
-       final result = await uploadService.uploadGenericFile(file, mimeType: isVideo ? 'video/mp4' : 'image/jpeg');
+       // Ensure mimeType is valid for backend
+       final mime = isVideo ? 'video/mp4' : 'image/jpeg';
+       final result = await uploadService.uploadGenericFile(file, mimeType: mime);
        final url = result['url'] ?? ''; 
        await createStatus(type, url, caption: caption);
+       fetchFeed(); // Refresh
   }
 }

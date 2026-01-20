@@ -15,6 +15,7 @@ import 'package:whatsapp_clone/widgets/media/media_bubble_widget.dart';
 import 'package:whatsapp_clone/screens/group_media_screen.dart';
 import 'package:whatsapp_clone/utils/chat_session_store.dart';
 import 'package:whatsapp_clone/services/search_service.dart';
+import 'package:whatsapp_clone/services/contact_service.dart'; // Import ContactService
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:intl/intl.dart';
