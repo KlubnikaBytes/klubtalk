@@ -7,7 +7,7 @@ class ApiConfig {
     if (kIsWeb) {
       url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:5000';
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.11:5000';
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.12:5000';
     } else {
       // iOS, Windows, macOS, Linux
       url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://127.0.0.1:5000';

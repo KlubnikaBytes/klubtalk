@@ -178,7 +178,12 @@ class ChatService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-         return Map<String, dynamic>.from(jsonDecode(response.body));
+         final data = Map<String, dynamic>.from(jsonDecode(response.body));
+         // Fix: Map createdAt to timestamp
+         if (data['timestamp'] == null && data['createdAt'] != null) {
+            data['timestamp'] = data['createdAt'];
+         }
+         return data;
       } else {
         throw Exception('Failed to send message: ${response.body}');
       }
@@ -210,7 +215,15 @@ class ChatService {
     );
 
     if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      final List<dynamic> data = jsonDecode(response.body);
+      return data.map((m) {
+         final map = Map<String, dynamic>.from(m);
+         // Fix: Map createdAt to timestamp
+         if (map['timestamp'] == null && map['createdAt'] != null) {
+            map['timestamp'] = map['createdAt'];
+         }
+         return map;
+      }).toList();
     } else {
       throw Exception('Failed to load messages');
     }
@@ -352,21 +365,41 @@ class ChatService {
   }
 
   Future<void> blockUser(String userId) async {
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/block-user'),
-      headers: await _getHeaders(),
-      body: jsonEncode({'blocked_id': userId}),
-    );
-    if (response.statusCode != 200) throw Exception('Failed to block user');
+    print('🚫 Blocking user: $userId');
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/block-user'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'userId': userId}),
+      );
+      print('🚫 Block response: ${response.statusCode} - ${response.body}');
+      if (response.statusCode != 200) {
+        throw Exception('Failed to block user: ${response.body}');
+      }
+      print('✅ Successfully blocked user: $userId');
+    } catch (e) {
+      print('❌ Block error: $e');
+      rethrow;
+    }
   }
 
   Future<void> unblockUser(String userId) async {
-    final response = await http.delete(
-      Uri.parse('${ApiConfig.baseUrl}/block-user'),
-      headers: await _getHeaders(),
-      body: jsonEncode({'blocked_id': userId}),
-    );
-    if (response.statusCode != 200) throw Exception('Failed to unblock user');
+    print('✅ Unblocking user: $userId');
+    try {
+      final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}/block-user'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'userId': userId}),
+      );
+      print('✅ Unblock response: ${response.statusCode} - ${response.body}');
+      if (response.statusCode != 200) {
+        throw Exception('Failed to unblock user: ${response.body}');
+      }
+      print('✅ Successfully unblocked user: $userId');
+    } catch (e) {
+      print('❌ Unblock error: $e');
+      rethrow;
+    }
   }
 
   Future<List<String>> getBlockedUsers() async {

@@ -7,6 +7,7 @@ import 'package:whatsapp_clone/models/call_log_model.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
+import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 
 class CallLogsScreen extends StatefulWidget {
   const CallLogsScreen({super.key});
@@ -18,6 +19,12 @@ class CallLogsScreen extends StatefulWidget {
 class _CallLogsScreenState extends State<CallLogsScreen> {
   List<CallLogModel> logs = [];
   bool isLoading = true;
+
+  @override
+  void dispose() {
+    // Explicitly doing nothing as mounted checks handle async gaps
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -32,7 +39,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
 
       if (token == null || userId == null) {
           print("CallLogsScreen: User ID or Token is null. Cannot fetch logs.");
-          setState(() => isLoading = false);
+          if (mounted) setState(() => isLoading = false);
           return;
       }
 
@@ -98,14 +105,16 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
              if (current != null) deduplicatedLogs.add(current);
           }
           
-          setState(() {
-            logs = deduplicatedLogs;
-            isLoading = false;
-          });
+          if (mounted) {
+             setState(() {
+               logs = deduplicatedLogs;
+               isLoading = false;
+             });
+          }
       }
     } catch (e) {
       print("Error fetching call logs: $e");
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -133,38 +142,75 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
           future: ContactService().getContactNameFromPhone(otherPhone), 
           builder: (context, snapshot) {
             final displayName = snapshot.data ?? otherPhone;
-            final isVideo = log.type == 'video';
-            final isMissed = log.status == 'missed';
+            
+            // Explicit Type Logic
+            final isVideo = log.type == 'video'; 
+            
+            // explicit Status Logic
+            final isMissed = log.status == 'missed' || log.status == 'rejected' || log.status == 'declined';
+            final isCompleted = log.status == 'completed';
+            
+            // Color Logic
+            final statusColor = isMissed ? Colors.red : Colors.green;
+            
+            // Icon Logic for Status Arrow
+            IconData statusIcon;
+            if (isMissed) {
+               statusIcon = Icons.call_missed;
+            } else if (isMeScanner) {
+               statusIcon = Icons.call_made; 
+            } else {
+               statusIcon = Icons.call_received;
+            }
 
             return ListTile(
               leading: CircleAvatar(
                 backgroundColor: Colors.grey[200],
-                backgroundImage: const AssetImage('assets/images/default_avatar.png'),
+                backgroundImage: const AssetImage('assets/images/strawberry_icon.png'),
                 child: const Icon(Icons.person, color: Colors.grey),
               ),
               title: Text(
                 displayName,
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+                style: TextStyle(
+                   fontWeight: FontWeight.bold, 
+                   color: isMissed ? Colors.red : Colors.black
+                ),
               ),
               subtitle: Row(
                 children: [
                    Icon(
-                     isMissed ? Icons.call_missed : (isMeScanner ? Icons.call_made : Icons.call_received),
-                     color: Colors.red, // User requested ALL red icons
+                     statusIcon,
+                     color: statusColor,
                      size: 16,
                    ),
                    const SizedBox(width: 5),
                    Text(
-                     DateFormat('MMM d, h:mm a').format(log.startedAt),
+                     DateFormat('MMM d, h:mm a').format(log.startedAt.toLocal()),
                      style: const TextStyle(color: Colors.grey, fontSize: 13),
                    )
                 ],
               ),
               trailing: IconButton(
-                icon: Icon(isVideo ? Icons.videocam : Icons.call, color: Theme.of(context).primaryColor),
+                icon: Icon(
+                    isVideo ? Icons.videocam : Icons.call, // Strict Icon type
+                    color: const Color(0xFF075E54) // WhatsApp Teal
+                ),
                 onPressed: () {
-                   // Click to Call
-                   WebrtcService().initCall(otherId, isVideo);
+                   // Click to Call - Strict routing based on log type
+                   // WebrtcService().initCall(otherId, isVideo); 
+                   
+                   // FIX: Navigation to Outgoing Call Screen (WhatsApp Style)
+                   Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => OutgoingCallScreen(
+                          peerName: displayName,
+                          peerAvatar: '', // todo: could fetch avatar url if we had it easily, can rely on placeholder
+                          peerId: otherId,
+                          isVideo: isVideo,
+                        )
+                      )
+                   );
                 },
               ),
             );

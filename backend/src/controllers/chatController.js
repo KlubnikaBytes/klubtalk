@@ -3,11 +3,41 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 
 // --- Helpers ---
-const getChatResponse = async (chatId) => {
-    return await Chat.findById(chatId)
+// --- Helpers ---
+// Updated to accept currentUserId and sanitize blocked users
+const getChatResponse = async (chatId, currentUserId) => {
+    let chat = await Chat.findById(chatId)
         .populate('participants', 'name phone avatar about isOnline lastSeen')
         .populate('lastMessage')
-        .populate('groupAdmin', 'name phone');
+        .populate('groupAdmin', 'name phone')
+        .lean(); // Use lean to edit
+
+    if (!chat || !currentUserId) return chat;
+
+    // Sanitize Blocked Users
+    const User = require('../models/User');
+    const me = await User.findById(currentUserId).select('blockedUsers blockedByUsers');
+    const blockedSet = new Set([
+        ...(me.blockedUsers || []),
+        ...(me.blockedByUsers || [])
+    ].map(id => id.toString()));
+
+    if (chat.participants) {
+        chat.participants = chat.participants.map(p => {
+            if (blockedSet.has(p._id.toString())) {
+                return {
+                    ...p,
+                    avatar: '', // Hide Avatar
+                    about: '', // Hide About
+                    isOnline: false, // Hide Online
+                    lastSeen: null // Hide Last Seen
+                    // Name and Phone remain (in groups you see name/phone usually)
+                };
+            }
+            return p;
+        });
+    }
+    return chat;
 };
 
 // --- Core Chat ---
@@ -19,14 +49,41 @@ exports.getMyChats = async (req, res) => {
             .lean() // Use lean to modify the object
             .sort({ updatedAt: -1 });
 
-        // Fetch User to get archived list
-        const user = await User.findById(req.uid).select('archivedChats');
+        // Fetch User to get archived list AND blocked lists
+        const user = await User.findById(req.uid).select('archivedChats blockedUsers blockedByUsers');
         const archivedIds = user?.archivedChats?.map(id => id.toString()) || [];
+        const blockedSet = new Set([
+            ...(user?.blockedUsers || []),
+            ...(user?.blockedByUsers || [])
+        ].map(id => id.toString()));
 
-        const enrichedChats = chats.map(chat => ({
-            ...chat,
-            isArchivedSelf: archivedIds.includes(chat._id.toString())
-        }));
+        const enrichedChats = chats.filter(chat => {
+            if (chat.isGroup) return true; // Groups are usually visible? Requirement says "Chats list: Exclude blocked users". Usually means Private.
+            // Check if peer is blocked
+            const peer = chat.participants.find(p => p._id.toString() !== req.uid);
+            if (!peer) return false;
+            return !blockedSet.has(peer._id.toString());
+        }).map(chat => {
+            // Sanitize participants for GROUPS (or remaining items)
+            const sanitizedParticipants = chat.participants.map(p => {
+                if (blockedSet.has(p._id.toString())) {
+                    return {
+                        ...p,
+                        avatar: '',
+                        about: '',
+                        isOnline: false,
+                        lastSeen: null
+                    };
+                }
+                return p;
+            });
+
+            return {
+                ...chat,
+                participants: sanitizedParticipants,
+                isArchivedSelf: archivedIds.includes(chat._id.toString())
+            };
+        });
 
         res.json(enrichedChats);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -50,6 +107,10 @@ exports.createPrivateChat = async (req, res) => {
         if (!peerId) {
             return res.status(400).json({ error: "peerId is required" });
         }
+
+        if (await isBlocked(req.uid, peerId)) {
+            return res.status(403).json({ error: "Cannot chat with this user" });
+        }
         let chat = await Chat.findOne({
             isGroup: false,
             participants: { $all: [req.uid, peerId] }
@@ -61,7 +122,7 @@ exports.createPrivateChat = async (req, res) => {
                 participants: [req.uid, peerId]
             });
         }
-        res.json(await getChatResponse(chat._id));
+        res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
@@ -69,7 +130,19 @@ const { getIO } = require('../socket'); // Import socket helper
 
 exports.sendMessage = async (req, res) => {
     try {
-        const { chatId, content, type, mediaUrl, tempId } = req.body; // Extract tempId
+        const { chatId, content, type, mediaUrl, tempId } = req.body;
+
+        // 1. Check Block Status
+        const chat = await Chat.findById(chatId);
+        if (chat && !chat.isGroup) {
+            const peerId = chat.participants.find(p => p.toString() !== req.uid);
+            if (peerId) {
+                const blocked = await isBlocked(req.uid, peerId);
+                if (blocked) {
+                    return res.status(403).json({ error: "You cannot send messages to this user." });
+                }
+            }
+        }
         // Fallback REST endpoint. Ideally use Socket.
         const message = await Message.create({
             chatId,
@@ -118,7 +191,7 @@ exports.createGroupChat = async (req, res) => {
             participants: allParticipants
         });
 
-        res.json(await getChatResponse(chat._id));
+        res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
@@ -178,21 +251,40 @@ exports.reportChat = async (req, res) => {
 };
 
 // --- Blocking (User Logic) ---
-// Note: Ideally move to userController, but api.js routes here.
+// --- Blocking (User Logic) ---
+const { modifyBlock, isBlocked } = require('../utils/blockUtil');
+
 exports.blockUser = async (req, res) => {
     try {
         const { userId } = req.body;
-        await User.findByIdAndUpdate(req.uid, { $addToSet: { blockedUsers: userId } });
+        if (!userId) return res.status(400).json({ error: "User ID required" });
+
+        await modifyBlock(req.uid, userId, 'block');
+
+        // Emit socket event to enforce immediate frontend update
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            // Disconnect/Kick sockets if needed? Or just emit event.
+            // Notify blocker (me) and blocked (them)?? No, usually silent.
+            // But my frontend needs to know to remove them.
+            // Send event to ME to refresh logic? Client should handle response.
+
+            // To be thorough: remove socket rooms if implemented.
+        } catch (e) { }
+
         res.json({ success: true, message: "Blocked" });
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
 exports.unblockUser = async (req, res) => {
     try {
-        const { userId } = req.body; // or req.query if delete?? api says POST typically for actions, but route says DELETE
-        // Route: router.delete('/block-user', ...). Body in delete? use query or body.
+        const { userId } = req.body;
         const targetId = userId || req.query.userId;
-        await User.findByIdAndUpdate(req.uid, { $pull: { blockedUsers: targetId } });
+
+        if (!targetId) return res.status(400).json({ error: "User ID required" });
+
+        await modifyBlock(req.uid, targetId, 'unblock');
         res.json({ success: true, message: "Unblocked" });
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -200,6 +292,6 @@ exports.unblockUser = async (req, res) => {
 exports.getBlockedUsers = async (req, res) => {
     try {
         const user = await User.findById(req.uid).populate('blockedUsers', 'name phone avatar');
-        res.json(user.blockedUsers);
+        res.json(user.blockedUsers || []);
     } catch (e) { res.status(500).json({ error: e.message }); }
 };

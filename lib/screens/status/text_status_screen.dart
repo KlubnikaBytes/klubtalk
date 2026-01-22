@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/services/status_service.dart';
+import 'package:whatsapp_clone/screens/status/status_privacy_screen.dart';
 
 class TextStatusScreen extends StatefulWidget {
   const TextStatusScreen({super.key});
@@ -35,6 +36,11 @@ class _TextStatusScreenState extends State<TextStatusScreen> {
   int _fontIndex = 0;
   bool _isSending = false;
 
+  // Privacy State
+  String _privacy = 'contacts';
+  List<String> _allowedUsers = [];
+  List<String> _excludedUsers = [];
+
   void _cycleColor() {
     setState(() {
       _colorIndex = (_colorIndex + 1) % _colors.length;
@@ -47,6 +53,24 @@ class _TextStatusScreenState extends State<TextStatusScreen> {
     });
   }
 
+  Future<void> _openPrivacy() async {
+     final result = await Navigator.push(context, MaterialPageRoute(
+       builder: (_) => StatusPrivacyScreen(
+         currentPrivacy: _privacy, 
+         currentAllowed: _allowedUsers, 
+         currentExcluded: _excludedUsers
+       )
+     ));
+     
+     if (result != null && result is Map) {
+        setState(() {
+           _privacy = result['privacy'];
+           _allowedUsers = result['allowed'];
+           _excludedUsers = result['excluded'];
+        });
+     }
+  }
+
   Future<void> _sendStatus() async {
     if (_controller.text.trim().isEmpty) return;
 
@@ -57,7 +81,10 @@ class _TextStatusScreenState extends State<TextStatusScreen> {
       
       await _statusService.createTextStatus(
         text: _controller.text.trim(),
-        backgroundColor: hexColor
+        backgroundColor: hexColor,
+        privacy: _privacy,
+        allowedUsers: _allowedUsers,
+        excludedUsers: _excludedUsers
       );
       
       if (mounted) Navigator.pop(context);
@@ -139,6 +166,32 @@ class _TextStatusScreenState extends State<TextStatusScreen> {
                   )
                 ],
               ),
+            ),
+
+            // Privacy Bubble
+            Positioned(
+              bottom: 20, left: 20,
+              child: GestureDetector(
+                onTap: _openPrivacy,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                       Text(
+                         _privacy == 'contacts' ? 'Status (Contacts)' 
+                         : (_privacy == 'exclude' ? 'Status (Excluded)' : 'Status (Selected)'),
+                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                       ),
+                       const SizedBox(width: 4),
+                       const Icon(Icons.arrow_drop_down, color: Colors.white)
+                    ],
+                  ),
+                ),
+              )
             ),
 
             // Send Button

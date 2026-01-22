@@ -30,7 +30,7 @@ class CallLogModel {
       receiverPhone: json['receiverPhone'] ?? '',
       type: json['type'],
       status: json['status'],
-      startedAt: json['callTime'] != null ? DateTime.parse(json['callTime']) : (json['startedAt'] != null ? DateTime.parse(json['startedAt']) : DateTime.now()),
+      startedAt: json['callTime'] != null ? DateTime.parse(json['callTime']).toLocal() : (json['startedAt'] != null ? DateTime.parse(json['startedAt']).toLocal() : DateTime.now()),
       duration: json['duration'] ?? 0,
     );
   }

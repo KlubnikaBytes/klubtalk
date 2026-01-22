@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/utils/permission_helper.dart';
 import 'package:whatsapp_clone/models/contact.dart' as app_contact;
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:http/http.dart' as http;
@@ -19,10 +20,32 @@ class ContactService {
     return await Permission.contacts.request();
   }
 
+  // Static explicit cache to prevent repeated Native Channel calls
+  static List<Contact>? _cachedContacts;
+
+  // Clear cache helper
+  void clearContactCache() {
+    _cachedContacts = null;
+  }
+
   // Fetch Device Contacts
-  Future<List<Contact>> getDeviceContacts() async {
+  Future<List<Contact>> getDeviceContacts({bool forceRefresh = false}) async {
+    // 1. Return Cache if available
+    if (_cachedContacts != null && !forceRefresh) {
+        return _cachedContacts!;
+    }
+
+    // Android 13+ / Personal Profile Fix: Explicitly request permission via handler first
+    bool hasPermission = await PermissionHelper.requestContactPermission();
+    if (!hasPermission) {
+        return [];
+    }
+
+    // Still call FlutterContacts request to ensure plugin is happy
     if (await FlutterContacts.requestPermission(readonly: true)) {
-      return await FlutterContacts.getContacts(withProperties: true, withPhoto: true);
+      final  contacts = await FlutterContacts.getContacts(withProperties: true, withPhoto: true);
+      _cachedContacts = contacts; // Update Cache
+      return contacts;
     }
     return [];
   }

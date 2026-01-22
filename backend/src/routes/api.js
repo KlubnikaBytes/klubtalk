@@ -83,8 +83,11 @@ const statusController = require('../controllers/statusController');
 // --- STATUS ROUTES ---
 router.post('/status/create', verifyToken, statusController.createStatus);
 router.get('/status/feed', verifyToken, statusController.getFeed);
+router.get('/status/:userId', verifyToken, statusController.getUserStatus);
 router.post('/status/view', verifyToken, statusController.viewStatus);
 router.delete('/status/:statusId', verifyToken, statusController.deleteStatus);
+router.post('/status/mute', verifyToken, statusController.muteUser);
+router.post('/status/unmute', verifyToken, statusController.unmuteUser);
 
 const callController = require('../controllers/callController');
 

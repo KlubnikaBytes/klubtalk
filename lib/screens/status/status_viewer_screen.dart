@@ -286,7 +286,9 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
            ],
          ),
        )
-     ).then((_) => _resume());
+     ).then((_) {
+       if (mounted) _resume();
+     });
   }
 
   Widget _buildContent(Status status) {

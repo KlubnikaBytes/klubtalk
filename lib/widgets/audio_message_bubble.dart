@@ -42,9 +42,9 @@ class AudioMessageBubble extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
                Text(
-                  message['timestamp'] != null 
-                     ? DateFormat('h:mm a').format(DateTime.parse(message['timestamp']).toLocal())
-                     : '',
+                  DateFormat('h:mm a').format(
+                     DateTime.parse(message['timestamp'] ?? message['createdAt'] ?? DateTime.now().toIso8601String()).toLocal()
+                  ),
                   style: TextStyle(
                     fontSize: 10,
                     color: isSender ? Colors.white70 : Colors.grey[600],

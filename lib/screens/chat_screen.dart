@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -31,6 +30,7 @@ import 'package:whatsapp_clone/models/sticker_model.dart';
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
 import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 import 'package:whatsapp_clone/screens/contact_info_screen.dart';
+import 'package:whatsapp_clone/main.dart' show scaffoldMessengerKey;
 
 class ChatScreen extends StatefulWidget {
   final Contact? contact;
@@ -128,6 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // 1. Messages
     _messageSub = socketService.messageStream.listen((data) {
+       if (_isPeerBlocked) return; // STEP 5: Block socket events when blocked
        print("ChatScreen: Received socket message: $data"); 
        if (!mounted) return;
 
@@ -185,6 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // 2. Typing
     _typingSub = socketService.typingStream.listen((data) {
+       if (_isPeerBlocked) return; // Don't show typing for blocked users
        if (data['chatId'] == widget.chatId && data['userId'] == widget.peerId) {
           if (mounted) {
             setState(() {
@@ -196,6 +198,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // 3. Online Status (Global or Specific)
     _onlineSub = socketService.onlineStatusStream.listen((data) {
+       if (_isPeerBlocked) return; // Don't show online status for blocked users
        if (data['userId'] == widget.peerId) {
           if (mounted) {
             setState(() {
@@ -327,6 +330,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendSticker(Sticker sticker) async {
+     if (_isPeerBlocked) return; // STEP 6: Block sticker sending
      final tempId = DateTime.now().millisecondsSinceEpoch.toString();
      final optimisticMessage = {
        '_id': tempId,
@@ -423,6 +427,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isPeerBlocked) return; // STEP 6: Block message sending
     if (_messageController.text.trim().isEmpty) return;
     String text = _messageController.text;
     _messageController.clear();
@@ -475,6 +480,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
   
   Future<void> _handleVoiceRecording(String path, int duration) async {
+      if (_isPeerBlocked) return; // STEP 6: Block voice recording
       final tempId = DateTime.now().millisecondsSinceEpoch.toString();
       final optimisticMessage = {
         '_id': tempId,
@@ -506,6 +512,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickAndSendMedia() async {
+    if (_isPeerBlocked) return; // STEP 6: Block media sending
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? media = await picker.pickMedia(); 
@@ -555,6 +562,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickAndSendFile() async {
+    if (_isPeerBlocked) return; // STEP 6: Block file sending
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.any, 
@@ -878,36 +886,74 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text("Block \"${widget.contact?.name ?? 'Contact'}\"?"),
-        content: const Text("Blocked contacts will no longer be able to call you or send you messages."),
+        content: const Text("You will no longer receive calls or messages."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context); // Close Dialog
+              Navigator.pop(context); // STEP 7: CLOSE FIRST
+
+              bool success = false;
               try {
                 await _chatService.blockUser(widget.peerId);
-                if(mounted) {
-                  setState(() => _blockedUserIds.add(widget.peerId));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You blocked this contact")));
-                }
-              } catch(e) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to block")));
+                success = true;
+              } catch (_) {}
+
+              if (!mounted) return;
+
+              if (success) {
+                setState(() {
+                  _blockedUserIds.add(widget.peerId);
+                  _isPeerOnline = false;
+                  _isPeerTyping = false;
+                });
+                scaffoldMessengerKey.currentState?.showSnackBar(
+                  const SnackBar(content: Text("You blocked this contact"))
+                );
+              } else {
+                scaffoldMessengerKey.currentState?.showSnackBar(
+                  const SnackBar(content: Text("Failed to block"))
+                );
               }
             },
             child: const Text("Block", style: TextStyle(color: Colors.red)),
-          )
+          ),
         ],
-      )
+      ),
     );
   }
   
   Future<void> _unblockContact() async {
+     // Separate API result from UI operations
+     bool success = false;
+     
      try {
        await _chatService.unblockUser(widget.peerId);
-       setState(() => _blockedUserIds.remove(widget.peerId));
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You unblocked this contact")));
+       success = true;
      } catch(e) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to unblock")));
+       success = false;
+     }
+     
+     if (!mounted) return;
+     
+     // Wait a frame to ensure any navigation is complete
+     await Future.delayed(Duration.zero);
+     
+     if (!mounted) return;
+     
+     // Update state and show feedback based on actual API result
+     if (success) {
+       setState(() => _blockedUserIds.remove(widget.peerId));
+       scaffoldMessengerKey.currentState?.showSnackBar(
+         const SnackBar(content: Text("You unblocked this contact"))
+       );
+     } else {
+       scaffoldMessengerKey.currentState?.showSnackBar(
+         const SnackBar(content: Text("Failed to unblock"))
+       );
      }
   }
 
@@ -1129,6 +1175,8 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () {
+                   if (_isPeerBlocked) return; // STEP 4: Profile must vanish
+                   
                    if (widget.isGroup) {
                       Navigator.push(context, MaterialPageRoute(builder: (c) => GroupDetailsScreen(chatId: widget.chatId, groupName: widget.groupName ?? 'Group', groupIcon: widget.groupPhoto ?? '')));
                    } else if (widget.contact != null) {
@@ -1139,7 +1187,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
-                    if (!widget.isGroup && widget.contact != null)
+                    if (!widget.isGroup && widget.contact != null && !_isPeerBlocked) // STEP 3: Kill online/typing status
                       _isPeerTyping 
                       ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFC92136))) 
                       : Text(_isPeerOnline ? 'Online' : 'Offline', 
@@ -1151,7 +1199,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          if (!widget.isGroup) ...[
+          if (!widget.isGroup && !_isPeerBlocked) ...[ // STEP 2: Hard block calls & video calls
             IconButton(
               icon: const Icon(Icons.videocam), 
               onPressed: () {
@@ -1165,9 +1213,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 Navigator.push(
                   context, 
                   MaterialPageRoute(
-                    builder: (context) => OutgoingCallScreen(
-                      peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
-                      peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
+                    builder: (_) => OutgoingCallScreen(
+                      peerName: widget.contact?.name ?? 'Unknown',
+                      peerAvatar: widget.contact?.profileImage ?? '',
                       peerId: widget.peerId,
                       isVideo: true,
                     )
@@ -1188,9 +1236,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 Navigator.push(
                   context, 
                   MaterialPageRoute(
-                    builder: (context) => OutgoingCallScreen(
-                      peerName: widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'),
-                      peerAvatar: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '',
+                    builder: (_) => OutgoingCallScreen(
+                      peerName: widget.contact?.name ?? 'Unknown',
+                      peerAvatar: widget.contact?.profileImage ?? '',
                       peerId: widget.peerId,
                       isVideo: false,
                     )
@@ -1441,9 +1489,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                                       child: Icon(Icons.timer_outlined, size: 10, color: isMe ? Colors.white70 : Colors.grey[600]),
                                                     ),
                                                   Text(
-                                                    data['timestamp'] != null 
-                                                      ? DateFormat('h:mm a').format(DateTime.parse(data['timestamp']).toLocal())
-                                                      : '',
+                                                    DateFormat('h:mm a').format(
+                                                       DateTime.parse(data['timestamp'] ?? data['createdAt'] ?? DateTime.now().toIso8601String()).toLocal()
+                                                    ),
                                                     style: TextStyle(
                                                       fontSize: 10,
                                                       color: isMe ? Colors.white70 : Colors.grey[600],

@@ -113,8 +113,22 @@ exports.getMe = async (req, res) => {
 // --- User Helpers (Ported from old controller to maintain functionality) ---
 exports.getAllUsers = async (req, res) => {
     try {
-        // Return all registered users except self
-        const users = await User.find({ _id: { $ne: req.uid }, isRegistered: true }).select('name phone avatar about');
+        const { isBlocked } = require('../utils/blockUtil'); // Lazy load if needed or top
+        // But better to pull blocked lists and filter in query OR memory
+        const currentUser = await User.findById(req.uid).select('blockedUsers blockedByUsers');
+
+        const excludeIds = [
+            req.uid,
+            ...(currentUser.blockedUsers || []),
+            ...(currentUser.blockedByUsers || [])
+        ];
+
+        // Return all registered users except self and blocked
+        const users = await User.find({
+            _id: { $nin: excludeIds },
+            isRegistered: true
+        }).select('name phone avatar about');
+
         res.json(users);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -123,7 +137,18 @@ exports.getAllUsers = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const updates = req.body;
+        const { name, about, avatar, isOnline } = req.body;
+
+        // Construct strict update object to prevent overwriting critical fields like blockedUsers
+        const updates = {};
+        if (name !== undefined) updates.name = name;
+        if (about !== undefined) updates.about = about;
+        if (avatar !== undefined) updates.avatar = avatar;
+        if (isOnline !== undefined) updates.isOnline = isOnline;
+
+        // Automatically update lastSeen if online status changes? 
+        // Or client sends it. Let's allow specific internal updates if needed, but for now strict whitelist.
+
         const user = await User.findByIdAndUpdate(req.uid, updates, { new: true });
         res.json(user);
     } catch (e) {

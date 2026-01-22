@@ -11,6 +11,9 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     blockedUsers: [String], // Array of firebaseUids
     archivedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Archive
+    mutedStatusAuthors: [{ type: String }], // Array of firebaseUids of users whose status is muted
+    blockedUsers: [{ type: String }], // Array of userIds (firebaseUid or ObjectId depending on auth)
+    blockedByUsers: [{ type: String }], // Array of userIds
 });
 
 userSchema.index({ name: 'text', phone: 'text' });

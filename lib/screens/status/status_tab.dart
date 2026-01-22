@@ -1,4 +1,3 @@
-
 import 'dart:math';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/models/status_model.dart';
 import 'package:whatsapp_clone/services/status_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // Screens
 import 'package:whatsapp_clone/screens/status/text_status_screen.dart';
@@ -27,6 +27,7 @@ class _StatusTabState extends State<StatusTab> {
   void initState() {
     super.initState();
     _statusService.fetchFeed();
+    _statusService.initSocketListeners(); // Bind Socket Events
     _statusService.addListener(_update);
   }
 
@@ -46,48 +47,91 @@ class _StatusTabState extends State<StatusTab> {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFC92136)));
     }
 
-    return ListView(
-      children: [
-        // 1. My Status
-        _buildMyStatusTile(),
-        
-        const SizedBox(height: 10),
-        
-        // 2. Recent Updates
-        if (_statusService.recentUpdates.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text("Recent updates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
-          ),
-          ..._statusService.recentUpdates.map((userStatus) => StatusTile(
-            userStatus: userStatus,
-            isViewed: false,
-          ))
-        ],
+    return Scaffold( 
+      backgroundColor: Colors.white,
+      body: RefreshIndicator(
+        onRefresh: _statusService.fetchFeed,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 80), // Space for FAB
+          children: [
+            // 1. My Status
+            _buildMyStatusTile(),
+            
+            const SizedBox(height: 10),
+            
+            // 2. Recent Updates
+            if (_statusService.recentUpdates.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text("Recent updates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+              ),
+              ..._statusService.recentUpdates.map((userStatus) => StatusTile(
+                userStatus: userStatus,
+                isViewed: false,
+                onUpdate: _statusService.fetchFeed,
+              ))
+            ],
 
-        // 3. Viewed Updates
-        if (_statusService.viewedUpdates.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text("Viewed updates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
-          ),
-          ..._statusService.viewedUpdates.map((userStatus) => StatusTile(
-            userStatus: userStatus,
-            isViewed: true,
-          ))
-        ],
-        
-        if (_statusService.recentUpdates.isEmpty && _statusService.viewedUpdates.isEmpty)
-           const Padding(
-             padding: EdgeInsets.all(30),
-             child: Center(child: Text("No recent updates", style: TextStyle(color: Colors.grey))),
-           )
-      ],
+            // 3. Viewed Updates
+            if (_statusService.viewedUpdates.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text("Viewed updates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+              ),
+              ..._statusService.viewedUpdates.map((userStatus) => StatusTile(
+                userStatus: userStatus,
+                isViewed: true,
+                onUpdate: _statusService.fetchFeed,
+              ))
+            ],
+            
+            // 4. Muted Updates
+            if (_statusService.mutedUpdates.isNotEmpty) ...[
+               _buildMutedUpdates(),
+            ],
+
+            if (_statusService.recentUpdates.isEmpty && _statusService.viewedUpdates.isEmpty && _statusService.mutedUpdates.isEmpty)
+               const Padding(
+                 padding: EdgeInsets.all(30),
+                 child: Center(child: Text("No recent updates", style: TextStyle(color: Colors.grey))),
+               )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMutedUpdates() {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        title: const Text("Muted updates", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
+        children: _statusService.mutedUpdates.map((s) => StatusTile(
+          userStatus: s, 
+          isViewed: false, // Muted usually appear somewhat dim, but logic is same
+          onUpdate: _statusService.fetchFeed
+        )).toList(),
+      ),
     );
   }
 
   Widget _buildMyStatusTile() {
     final myStatus = _statusService.myStatus;
+    final hasStatus = myStatus != null && myStatus.statuses.isNotEmpty;
+    
+    // Thumbnail Logic: Last status content if image/video, else Profile Pic
+    Widget? thumbnail;
+    if (hasStatus) {
+       final last = myStatus!.statuses.last;
+       if (last.type == 'image') {
+          thumbnail = CachedNetworkImage(imageUrl: last.content, fit: BoxFit.cover, width: 50, height: 50);
+       } else if (last.type == 'video') {
+          // Video: Show generic or profile pic with icon? 
+          // WhatsApp shows video thumb. We don't have it.
+          // Fallback to Profile Pic but maybe add an icon overlay?
+          // Or just Profile Pic.
+       }
+    }
 
     return ListTile(
       leading: Stack(
@@ -95,13 +139,16 @@ class _StatusTabState extends State<StatusTab> {
           _StatusRing(
             count: myStatus?.statuses.length ?? 0,
             isViewed: false, 
-            isEmpty: myStatus == null || myStatus.statuses.isEmpty,
-            child: AvatarWidget(
-              imageUrl: myStatus?.userAvatar ?? '', 
-              radius: 26, 
+            isEmpty: !hasStatus,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: thumbnail ?? AvatarWidget(
+                imageUrl: myStatus?.userAvatar ?? '', 
+                radius: 26, 
+              ),
             ),
           ),
-          if (myStatus == null || myStatus.statuses.isEmpty)
+          if (!hasStatus)
             Positioned(
               bottom: 0, right: 0,
               child: Container(
@@ -113,24 +160,42 @@ class _StatusTabState extends State<StatusTab> {
         ],
       ),
       title: const Text("My Status", style: TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: const Text("Tap to add status update"),
+      subtitle: Text(hasStatus ? "Tap to view updates" : "Tap to add status update"),
       onTap: () {
-         if (myStatus != null && myStatus.statuses.isNotEmpty) {
+         if (hasStatus) {
              Navigator.push(context, MaterialPageRoute(
-               builder: (_) => StatusViewerScreen(userStatus: myStatus, onViewStatus: (id) {}) // My status logic
+               builder: (_) => StatusViewerScreen(
+                   userStatus: myStatus!, 
+                   onViewStatus: (id) => _statusService.viewStatus(id)
+               )
              ));
          } else {
-           _showCreateOptions(context);
+           // Fix: Directly open Camera
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen()));
          }
       },
-      trailing: IconButton(
-        icon: const Icon(Icons.camera_alt, color: Color(0xFFC92136)),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen())),
+      trailing: PopupMenuButton<String>(
+        onSelected: (val) {
+           if (val == 'camera') {
+             Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen()));
+           } else if (val == 'text') {
+             Navigator.push(context, MaterialPageRoute(builder: (_) => const TextStatusScreen()));
+           }
+        },
+        itemBuilder: (_) => [
+           const PopupMenuItem(value: 'camera', child: Text("Camera")),
+           const PopupMenuItem(value: 'text', child: Text("Text Status")),
+        ],
+        child: const Padding(
+           padding: EdgeInsets.all(8.0),
+           child: Icon(Icons.more_horiz, color: Color(0xFFC92136)),
+        ),
       ),
     );
   }
 
   void _showCreateOptions(BuildContext context) {
+    // Kept for other entry points if needed, but FAB/MyStatus now bypass it.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -183,16 +248,49 @@ class _StatusTabState extends State<StatusTab> {
 class StatusTile extends StatelessWidget {
   final UserStatus userStatus;
   final bool isViewed;
+  final VoidCallback? onUpdate;
 
-  const StatusTile({super.key, required this.userStatus, required this.isViewed});
+  const StatusTile({super.key, required this.userStatus, required this.isViewed, this.onUpdate});
 
   @override
   Widget build(BuildContext context) {
+    // Determine thumbnail
+    Widget? thumbnail;
+    if (userStatus.statuses.isNotEmpty) {
+       final last = userStatus.statuses.last;
+       if (last.type == 'image') {
+          thumbnail = CachedNetworkImage(
+            imageUrl: last.content, 
+            fit: BoxFit.cover, 
+            width: 50, 
+            height: 50,
+            placeholder: (_,__) => Container(color: Colors.grey[200]),
+            errorWidget: (_,__,___) => const Icon(Icons.error),
+          );
+       } else if (last.type == 'text') {
+           // Text Status Thumbnail
+           Color bgColor = const Color(0xFF7E57C2);
+           try {
+             if (last.backgroundColor.startsWith('#')) {
+               bgColor = Color(int.parse(last.backgroundColor.replaceAll('#', '0xFF')));
+             }
+           } catch (_) {}
+           thumbnail = Container(
+             color: bgColor,
+             child: Center(child: Text(last.content, style: const TextStyle(fontSize: 8, color: Colors.white), overflow: TextOverflow.ellipsis)),
+           );
+       }
+    }
+
     return ListTile(
       leading: _StatusRing(
         count: userStatus.statuses.length,
         isViewed: isViewed,
-        child: AvatarWidget(imageUrl: userStatus.userAvatar ?? '', radius: 26),
+        isMuted: userStatus.isMuted,
+        child: ClipRRect(
+           borderRadius: BorderRadius.circular(26),
+           child: thumbnail ?? AvatarWidget(imageUrl: userStatus.userAvatar ?? '', radius: 26)
+        ),
       ),
       title: Text(userStatus.userName, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(_formatTime(userStatus.lastUpdate)),
@@ -202,7 +300,32 @@ class StatusTile extends StatelessWidget {
              userStatus: userStatus,
              onViewStatus: StatusService().viewStatus
            )
-         ));
+         )).then((_) => onUpdate?.call());
+      },
+      onLongPress: () {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(userStatus.isMuted ? "Unmute ${userStatus.userName}?" : "Mute ${userStatus.userName}?"),
+             content: Text(userStatus.isMuted 
+                ? "New status updates from ${userStatus.userName} will appear under recent updates." 
+                : "New status updates from ${userStatus.userName} will appear under muted updates."),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  if (userStatus.isMuted) {
+                    StatusService().unmuteUser(userStatus.userId).then((_) => onUpdate?.call());
+                  } else {
+                    StatusService().muteUser(userStatus.userId).then((_) => onUpdate?.call());
+                  }
+                },
+                child: Text(userStatus.isMuted ? "Unmute" : "Mute"),
+              ),
+            ],
+          ),
+        );
       },
     );
   }
@@ -219,17 +342,28 @@ class _StatusRing extends StatelessWidget {
   final int count;
   final bool isViewed;
   final bool isEmpty;
+  final bool isMuted;
   final Widget child;
 
-  const _StatusRing({required this.count, required this.isViewed, required this.child, this.isEmpty = false});
+  const _StatusRing({
+    required this.count, 
+    required this.isViewed, 
+    required this.child, 
+    this.isEmpty = false,
+    this.isMuted = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (isEmpty) return child;
 
     return CustomPaint(
-      painter: _RingPainter(count: count, color: isViewed ? Colors.grey : const Color(0xFFC92136)),
+      painter: _RingPainter(
+        count: count, 
+        color: isMuted ? Colors.grey : (isViewed ? Colors.grey : const Color(0xFFC92136))
+      ),
       child: Container(
+        width: 52, height: 52,
         padding: const EdgeInsets.all(4), 
         child: child,
       ),

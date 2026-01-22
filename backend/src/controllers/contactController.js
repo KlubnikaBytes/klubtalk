@@ -96,8 +96,22 @@ const addContact = async (req, res) => {
 const getMyContacts = async (req, res) => {
     const currentUserId = req.user.uid;
     try {
+        const User = require('../models/User');
+        const me = await User.findById(currentUserId).select('blockedUsers blockedByUsers');
+
+        // Filter out if the linked user is blocked
+        // Contact model has matches: 'linkedUserId'.
+        const blockedIds = new Set([
+            ...(me.blockedUsers || []),
+            ...(me.blockedByUsers || [])
+        ].map(id => id.toString()));
+
         // Sort by name
-        const contacts = await Contact.find({ ownerUserId: currentUserId }).sort({ name: 1 });
+        let contacts = await Contact.find({ ownerUserId: currentUserId }).sort({ name: 1 });
+
+        // Filter in memory since linkedUserId is sparse
+        contacts = contacts.filter(c => !c.linkedUserId || !blockedIds.has(c.linkedUserId));
+
         res.status(200).json(contacts);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch contacts' });
@@ -123,9 +137,18 @@ const syncContacts = async (req, res) => {
 
         const normalizedInput = contacts.map(c => normalizePhone(c));
 
-        // Find registered users with these numbers
+        // Get blocked list
+        const me = await User.findById(req.user.uid).select('blockedUsers blockedByUsers');
+        const excludeIds = [
+            req.user.uid,
+            ...(me.blockedUsers || []),
+            ...(me.blockedByUsers || [])
+        ];
+
+        // Find registered users with these numbers, excluding blocked
         const registeredUsers = await User.find({
-            phone: { $in: normalizedInput }
+            phone: { $in: normalizedInput },
+            _id: { $nin: excludeIds } // Exclude blocked users from Sync
         }).select('name phone avatar about isOnline lastSeen');
 
         const registeredPhones = new Set(registeredUsers.map(u => u.phone));

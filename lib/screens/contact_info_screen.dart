@@ -5,6 +5,7 @@ import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/theme/app_theme.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:intl/intl.dart';
+import 'package:whatsapp_clone/main.dart' show scaffoldMessengerKey;
 
 class ContactInfoScreen extends StatefulWidget {
   final Contact contact;
@@ -445,13 +446,28 @@ class _ContactInfoScreenState extends State<ContactInfoScreen> {
 
   void _toggleBlock() async {
      if (_isBlocked) {
-        // Unblock
+        // Unblock - Separate API result from UI operations
+        bool success = false;
+        
         try {
           await _chatService.unblockUser(widget.peerId);
-          setState(() => _isBlocked = false);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Unblocked")));
+          success = true;
         } catch(e) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to unblock")));
+          success = false;
+        }
+        
+        if (!mounted) return;
+        
+        // Wait a frame to ensure any navigation is complete
+        await Future.delayed(Duration.zero);
+        
+        if (!mounted) return;
+        
+        if (success) {
+          setState(() => _isBlocked = false);
+          scaffoldMessengerKey.currentState?.showSnackBar(const SnackBar(content: Text("Unblocked")));
+        } else {
+          scaffoldMessengerKey.currentState?.showSnackBar(const SnackBar(content: Text("Failed to unblock")));
         }
      } else {
         // Confirm Block
@@ -464,13 +480,32 @@ class _ContactInfoScreenState extends State<ContactInfoScreen> {
                TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: _primaryColor))),
                TextButton(
                  onPressed: () async {
-                   Navigator.pop(context);
+                   // Separate API result from UI operations
+                   bool success = false;
+                   
                    try {
                      await _chatService.blockUser(widget.peerId);
-                     setState(() => _isBlocked = true);
-                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Blocked")));
+                     success = true;
                    } catch(e) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to block")));
+                     success = false;
+                   }
+                   
+                   if (!mounted) return;
+                   
+                   // Close dialog first
+                   Navigator.pop(context);
+                   
+                   // Wait a frame to ensure dialog is fully closed
+                   await Future.delayed(Duration.zero);
+                   
+                   if (!mounted) return;
+                   
+                   // Update state and show feedback based on actual API result
+                   if (success) {
+                     setState(() => _isBlocked = true);
+                     scaffoldMessengerKey.currentState?.showSnackBar(const SnackBar(content: Text("Blocked")));
+                   } else {
+                     scaffoldMessengerKey.currentState?.showSnackBar(const SnackBar(content: Text("Failed to block")));
                    }
                  },
                  child: const Text("Block", style: TextStyle(color: Colors.red)),

@@ -32,8 +32,34 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initCamera();
-    _fetchGallery(); // Load gallery strip
+    _startup();
+  }
+
+  Future<void> _startup() async {
+    // FIX: "Ensure PhotoManager calls run ONLY after camera is fully released"
+    // OR: Prevent concurrency. 
+    // Best Approach: Handle Permissions & Gallery FIRST, then Bind Camera.
+    // This avoids "surface closed" if permission dialog interrupts camera.
+    
+    // 1. Permissions Strict
+    Map<Permission, PermissionStatus> statuses = await [
+        Permission.camera,
+        Permission.microphone,
+        Permission.photos, 
+        Permission.videos, 
+        Permission.storage, 
+    ].request();
+
+    if (statuses[Permission.camera] != PermissionStatus.granted) {
+          if (mounted) setState(() => _errorMessage = "Camera permission denied.");
+          return;
+    }
+
+    // 2. Fetch Gallery (Safe - Camera not bound yet)
+    await _fetchGallery();
+
+    // 3. Init Camera (Safe - Gallery done)
+    await _initCamera(statuses); 
   }
 
   @override
@@ -52,11 +78,18 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
     }
   }
 
-  Future<void> _initCamera() async {
+  Future<void> _initCamera([Map<Permission, PermissionStatus>? statuses]) async {
     try {
-      Map<Permission, PermissionStatus> statuses = await [
+      if (_controller != null) {
+          await _controller!.dispose(); // STRICT: Unbind all before binding
+      }
+
+      statuses ??= await [
         Permission.camera,
         Permission.microphone,
+        Permission.photos, 
+        Permission.videos, 
+        Permission.storage, 
       ].request();
 
       if (statuses[Permission.camera] != PermissionStatus.granted) {
@@ -73,7 +106,9 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
         _controller = CameraController(
             _cameras![_selectedCameraIdx], 
             ResolutionPreset.high,
-            enableAudio: statuses[Permission.microphone] == PermissionStatus.granted
+            // STRICT FIX: Disable audio by default (Photo Mode) to prevent 3-surface binding crash
+            enableAudio: false, 
+            imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.jpeg : ImageFormatGroup.bgra8888,
         );
         
         await _controller!.initialize();
@@ -124,7 +159,34 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
     } catch (_) {}
   }
 
+  Future<void> _rebindCameraForVideo(bool isVideo) async {
+      if (_controller != null) {
+          await _controller!.dispose();
+      }
+      
+      // Re-init with appropriate audio setting
+      // Video Mode: enableAudio = true
+      // Photo Mode: enableAudio = false
+      _controller = CameraController(
+            _cameras![_selectedCameraIdx], 
+            ResolutionPreset.high,
+            enableAudio: isVideo, 
+            imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.jpeg : ImageFormatGroup.bgra8888,
+      );
+      
+      await _controller!.initialize();
+      await _controller!.setFlashMode(_isFlashOn ? FlashMode.torch : FlashMode.off);
+      if (mounted) setState(() {});
+  }
+
   Future<void> _startVideo() async {
+    // 1. Strict Re-bind: Switch to Video Mode (Audio enabled)
+    try {
+        await _rebindCameraForVideo(true); 
+    } catch (_) {
+       return;
+    }
+
     if (_controller == null || !_controller!.value.isInitialized || _controller!.value.isRecordingVideo) return;
     try {
       await _controller!.startVideoRecording();
@@ -137,6 +199,11 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
     try {
       final file = await _controller!.stopVideoRecording();
       setState(() => _isRecording = false);
+      
+      // 2. Strict Re-bind: Revert to Photo Mode (No Audio)
+      // Do this BEFORE navigation to ensure clean state
+      await _rebindCameraForVideo(false);
+
       _openPreview(File(file.path), 'video');
     } catch (_) {}
   }

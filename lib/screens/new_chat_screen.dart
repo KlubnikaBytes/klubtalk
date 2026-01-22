@@ -11,16 +11,20 @@ import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
 import 'package:whatsapp_clone/screens/add_contact_screen.dart';
+
 import 'package:whatsapp_clone/screens/group_participant_select_screen.dart';
+import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart'; // NEW
 
 class NewChatScreen extends StatefulWidget {
   final bool isSelectionMode;
-  final bool isMultiSelect; // New Flag
+  final bool isMultiSelect; 
+  final bool isCallSelection; // NEW: For "New Call" flow
 
   const NewChatScreen({
     super.key, 
     this.isSelectionMode = false, 
-    this.isMultiSelect = false
+    this.isMultiSelect = false,
+    this.isCallSelection = false,
   });
 
   @override
@@ -207,6 +211,20 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
 
         if (widget.isSelectionMode) {
             Navigator.pop(context, [result]); // Return List even for single select to be consistent if caller handles list
+        } else if (widget.isCallSelection) {
+             if (mounted) {
+                 Navigator.pushReplacement(
+                   context,
+                   MaterialPageRoute(
+                     builder: (_) => OutgoingCallScreen(
+                       peerName: contactObj?.name ?? user?.name ?? 'User',
+                       peerAvatar: contactObj?.profileImage ?? user?.profilePhotoUrl ?? '',
+                       peerId: peerId!,
+                       isVideo: false,
+                     )
+                   )
+                 );
+             }
         } else {
              if (mounted) {
               Navigator.pushReplacement(
@@ -272,7 +290,8 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
             Text(
                 widget.isMultiSelect 
                   ? '${_selectedIds.length} selected'
-                  : 'Select contact', 
+                  : (widget.isCallSelection ? 'New call' : 'Select contact'), 
+                  // WhatsApp title is same 'Select contact', so keeping it. Optional: 'New call' 
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
             ),
             if (!kIsWeb && _permissionStatus.isGranted && !widget.isMultiSelect)

@@ -137,13 +137,9 @@ class ImageBubbleWidget extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                      Text(
-                        message['timestamp'] != null 
-                           ? // Importing intl needed or raw string? Using basic logic or need import. 
-                             // Best to assume Intl is available or use simple parsing if import missing.
-                             // Actually, let's use a cleaner approach: pass formatted time or just format it.
-                             // We'll add import 'package:intl/intl.dart'; at top.
-                             DateFormat('h:mm a').format(DateTime.parse(message['timestamp']).toLocal())
-                           : '',
+                        DateFormat('h:mm a').format(
+                           DateTime.parse(message['timestamp'] ?? message['createdAt'] ?? DateTime.now().toIso8601String()).toLocal()
+                        ),
                         style: const TextStyle(color: Colors.white, fontSize: 10)
                      ),
                      if (isMe) ...[

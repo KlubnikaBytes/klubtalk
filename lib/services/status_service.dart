@@ -1,4 +1,5 @@
 import 'package:whatsapp_clone/services/media_upload_service.dart';
+import 'package:whatsapp_clone/utils/permission_helper.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
@@ -6,12 +7,37 @@ import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/status_model.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 
 class StatusService {
+  static final StatusService _instance = StatusService._internal();
+  factory StatusService() => _instance;
+  StatusService._internal();
 
   Future<String?> _getToken() async => AuthService().token;
 
-  Future<void> createStatus(String type, String content, {String? caption, String? color}) async {
+  bool _areListenersInit = false;
+
+  // Init Socket Listeners
+  void initSocketListeners() {
+    if (_areListenersInit) return;
+    _areListenersInit = true;
+
+    // Listen to Stream instead of using socket directly (safer for late connections)
+    SocketService().statusStream.listen((data) {
+       print("New Status Received via Stream: $data");
+       fetchFeed();
+    });
+  }
+
+  Future<void> createStatus(String type, String content, {
+    String? caption, 
+    String? color, 
+    String? mimeType,
+    String privacy = 'contacts',
+    List<String>? allowedUsers,
+    List<String>? excludedUsers,
+  }) async {
     final token = await _getToken();
     await http.post(
       Uri.parse('${ApiConfig.baseUrl}/status/create'),
@@ -22,8 +48,12 @@ class StatusService {
       body: jsonEncode({
         'type': type,
         'content': content,
+        'mimeType': mimeType,
         'caption': caption,
-        'backgroundColor': color
+        'backgroundColor': color,
+        'privacy': privacy,
+        'allowedUsers': allowedUsers ?? [],
+        'excludedUsers': excludedUsers ?? [],
       }),
     );
   }
@@ -64,6 +94,32 @@ class StatusService {
     fetchFeed();
   }
 
+  Future<void> muteUser(String userId) async {
+    final token = await _getToken();
+    await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/status/mute'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json'
+      },
+      body: jsonEncode({'userId': userId}),
+    );
+    fetchFeed();
+  }
+
+  Future<void> unmuteUser(String userId) async {
+    final token = await _getToken();
+    await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/status/unmute'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json'
+      },
+      body: jsonEncode({'userId': userId}),
+    );
+    fetchFeed();
+  }
+
   // --- State Management & Helper Methods ---
 
   final List<VoidCallback> _listeners = [];
@@ -71,10 +127,12 @@ class StatusService {
   UserStatus? _myStatus;
   List<UserStatus> _recentUpdates = [];
   List<UserStatus> _viewedUpdates = [];
+  List<UserStatus> _mutedUpdates = [];
 
   UserStatus? get myStatus => _myStatus;
   List<UserStatus> get recentUpdates => _recentUpdates;
   List<UserStatus> get viewedUpdates => _viewedUpdates;
+  List<UserStatus> get mutedUpdates => _mutedUpdates;
 
   void addListener(VoidCallback listener) {
     _listeners.add(listener);
@@ -103,11 +161,18 @@ class StatusService {
            _myStatus = null;
         }
 
-        // 2. Separate Recent vs Viewed
+        // 2. Clear lists
         _recentUpdates = [];
         _viewedUpdates = [];
+        _mutedUpdates = [];
 
         for (var statusGroup in allStatuses) {
+           // Check Muted FIRST
+           if (statusGroup.isMuted) {
+             _mutedUpdates.add(statusGroup);
+             continue;
+           }
+
            // Check if ANY status in this group is NOT viewed by me
            bool hasUnseen = statusGroup.statuses.any((s) {
               return !s.viewers.contains(currentUserId);
@@ -126,19 +191,54 @@ class StatusService {
       }
   }
 
-  Future<void> createTextStatus({required String text, required String backgroundColor}) async {
-      await createStatus('text', text, color: backgroundColor);
-      fetchFeed(); // Refresh after create
+  Future<void> createTextStatus({
+    required String text, 
+    required String backgroundColor,
+    String privacy = 'contacts',
+    List<String>? allowedUsers,
+    List<String>? excludedUsers,
+  }) async {
+      await createStatus('text', text, color: backgroundColor, privacy: privacy, allowedUsers: allowedUsers, excludedUsers: excludedUsers);
+      fetchFeed(); 
   }
 
-  Future<void> createMediaStatus({required File file, String caption = '', bool isVideo = false}) async {
-       final uploadService = MediaUploadService();
-       final type = isVideo ? 'video' : 'image';
-       // Ensure mimeType is valid for backend
-       final mime = isVideo ? 'video/mp4' : 'image/jpeg';
-       final result = await uploadService.uploadGenericFile(file, mimeType: mime);
-       final url = result['url'] ?? ''; 
-       await createStatus(type, url, caption: caption);
-       fetchFeed(); // Refresh
+  Future<void> createMediaStatus({
+    required File file, 
+    String caption = '', 
+    bool isVideo = false,
+    String privacy = 'contacts',
+    List<String>? allowedUsers,
+    List<String>? excludedUsers,
+  }) async {
+       try {
+         // Fix: Check Permission BEFORE Upload
+         bool hasPermission = await PermissionHelper.requestMediaPermissions(video: isVideo);
+         if (!hasPermission) {
+           throw Exception("Media permission denied");
+         }
+
+         final uploadService = MediaUploadService();
+         final type = isVideo ? 'video' : 'image';
+         final mime = isVideo ? 'video/mp4' : 'image/jpeg';
+         
+         final result = await uploadService.uploadGenericFile(file, mimeType: mime);
+         final url = result['url'];
+         
+         if (url == null) throw Exception("Upload failed: No URL returned");
+
+         await createStatus(
+           type, url, 
+           caption: caption, 
+           mimeType: mime,
+           privacy: privacy,
+           allowedUsers: allowedUsers,
+           excludedUsers: excludedUsers
+        );
+         
+         fetchFeed(); 
+       } catch (e) {
+         print("Create Media Status Error: $e");
+         rethrow;
+       }
   }
 }

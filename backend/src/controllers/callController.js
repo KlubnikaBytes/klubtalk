@@ -18,6 +18,12 @@ exports.saveCall = async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Check Block Status
+        const { isBlocked } = require('../utils/blockUtil');
+        if (await isBlocked(from, to)) {
+            return res.status(403).json({ error: 'Call blocked' });
+        }
+
         const newCall = new Call({
             from,
             to,
@@ -47,11 +53,25 @@ exports.getCallHistory = async (req, res) => {
         }
 
         // Find calls where the user is either the caller (from) or receiver (to)
-        // Sort by startedAt descending (most recent first)
+        // AND exclude calls where the other party is blocked/blocking
+
+        const User = require('../models/User'); // Ensure User model is loaded
+        const me = await User.findById(userId).select('blockedUsers blockedByUsers');
+        const excludeSet = new Set([
+            ...(me.blockedUsers || []),
+            ...(me.blockedByUsers || [])
+        ].map(id => id.toString()));
+
+        // We can't easily filter efficiently in Mongo unless we use aggregation or multiple queries if exclude list is huge.
+        // But for typical user, list is small. We can use $nin in the query.
+
         const calls = await Call.find({
-            $or: [{ from: userId }, { to: userId }]
+            $or: [{ from: userId }, { to: userId }],
+            $and: [
+                { from: { $nin: Array.from(excludeSet) } },
+                { to: { $nin: Array.from(excludeSet) } }
+            ]
         })
-            .populate('from', 'name avatar phone')
             .populate('from', 'name avatar phone')
             .populate('to', 'name avatar phone')
             .sort({ callTime: -1 });

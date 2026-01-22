@@ -110,9 +110,9 @@ class _VideoBubbleWidgetState extends State<VideoBubbleWidget> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                          Text(
-                            widget.message['timestamp'] != null 
-                               ? DateFormat('h:mm a').format(DateTime.parse(widget.message['timestamp']).toLocal())
-                               : '',
+                            DateFormat('h:mm a').format(
+                               DateTime.parse(widget.message['timestamp'] ?? widget.message['createdAt'] ?? DateTime.now().toIso8601String()).toLocal()
+                            ),
                             style: const TextStyle(color: Colors.white, fontSize: 10)
                          ),
                          if (widget.isMe) ...[

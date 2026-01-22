@@ -62,13 +62,7 @@ app.use((req, res, next) => {
 });
 
 // Serve Static Files (Media on VPS Filesystem)
-// Serve Static Files (Media on VPS Filesystem)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-    setHeaders: (res, path, stat) => {
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    }
-}));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -121,16 +115,8 @@ setInterval(async () => {
 }, 60000);
 
 // Cleanup Expired Statuses (Every 60 seconds)
-const Status = require('./src/models/Status');
+// Cleanup Expired Statuses (Every 60 seconds)
+const statusController = require('./src/controllers/statusController');
 setInterval(async () => {
-    try {
-        const result = await Status.deleteMany({
-            createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        });
-        if (result.deletedCount > 0) {
-            console.log(`🧹 Status Cleanup: Deleted ${result.deletedCount} expired statuses.`);
-        }
-    } catch (err) {
-        console.error('Status Cleanup Job Error:', err);
-    }
+    await statusController.cleanupExpiredStatuses();
 }, 60000);

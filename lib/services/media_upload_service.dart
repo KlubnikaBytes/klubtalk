@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/services.dart'; // For MethodChannel
 import 'dart:io';
 import 'dart:typed_data'; // for Uint8List
 import 'package:http/http.dart' as http;
@@ -100,6 +101,22 @@ class MediaUploadService {
     } else {
       // Mobile: Expecting String path or File object
       String path = fileOrPath is File ? fileOrPath.path : fileOrPath.toString();
+
+      // NATIVE: Check for content:// URI (Scoped Storage Fix)
+      if (path.startsWith('content://')) {
+        try {
+           const platform = MethodChannel('com.example.whatsapp_clone/storage');
+           final String? resolvedPath = await platform.invokeMethod('resolveContentUri', {'uri': path});
+           if (resolvedPath != null) {
+             path = resolvedPath;
+             print("Resolved content URI to: $path");
+           }
+        } catch (e) {
+          print("Error resolving content URI: $e");
+          // Proceed with original path, might fail but worth a try or just rethrow
+        }
+      }
+
       request.files.add(await http.MultipartFile.fromPath(fieldName, path));
     }
 

@@ -26,6 +26,9 @@ class SocketService {
   Stream<Map<String, dynamic>> get deliveryStatusStream => _deliveryStatusController.stream;
   Stream<Map<String, dynamic>> get seenStatusStream => _seenStatusController.stream;
   Stream<Map<String, dynamic>> get callStream => _callController.stream;
+  // Fix: Expose Status Stream
+  final _statusController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get statusStream => _statusController.stream;
 
   bool get isConnected => _isConnected;
   IO.Socket? get socket => _socket;
@@ -115,6 +118,11 @@ class SocketService {
 
     _socket!.on('user_status', (data) {
        _onlineStatusController.add(Map<String, dynamic>.from(data));
+    });
+
+    // --- Status Events ---
+    _socket!.on('status_uploaded', (data) {
+       _statusController.add(Map<String, dynamic>.from(data));
     });
 
     // --- Call Events ---

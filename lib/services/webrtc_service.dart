@@ -198,6 +198,11 @@ class WebrtcService {
         _isCaller = false; 
         _logSaved = false;
         bool video = data['callType'] == 'video';
+        
+        // FIX: Update internal state so saveCallLog uses correct type
+        isVideoEnabled = video; 
+        isAudioEnabled = true;
+
         final offerMap = data['offer'];
         if (offerMap == null) throw Exception("No offer data received");
         
@@ -385,7 +390,7 @@ class WebrtcService {
           "type": callType,
           "status": status,
           "duration": duration,
-          "callTime": DateTime.now().toIso8601String(),
+          "callTime": DateTime.now().toIso8601String(), // FIX: Use DEVICE time, explicit NOW
       };
 
       await http.post(

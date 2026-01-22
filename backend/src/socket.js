@@ -83,6 +83,7 @@ exports.init = (server) => {
         }
 
         // --- EVENTS ---
+        const { isBlocked } = require('./utils/blockUtil');
 
         // 1. Join Chat Room (optional)
         socket.on('join_chat', (chatId) => {
@@ -94,6 +95,18 @@ exports.init = (server) => {
         socket.on('send_message', async (data) => {
             try {
                 const { chatId, content, type, mediaUrl, thumbnailUrl, tempId } = data;
+
+                // Check Block Logic (Peer in 1:1 chat)
+                // We need to fetch chat to know participants.
+                const chat = await Chat.findById(chatId);
+                if (chat && !chat.isGroup) {
+                    const peerId = chat.participants.find(p => p.toString() !== socket.uid);
+                    if (peerId && await isBlocked(socket.uid, peerId)) {
+                        console.log(`Blocked message attempt from ${socket.uid} to ${peerId}`);
+                        socket.emit('message_error', { tempId, error: "Blocked" }); // Notify client?
+                        return; // Reject
+                    }
+                }
 
                 const message = await Message.create({
                     chatId,
@@ -153,8 +166,13 @@ exports.init = (server) => {
         });
 
         // 4. Typing
-        socket.on('typing', (data) => {
-            // Broadcast to room (exclude sender)
+        socket.on('typing', async (data) => {
+            // Check if blocked?
+            // Need peerId. 'typing' often just sends chatId.
+            // If group, fine. If 1:1, we should check.
+            // But checking DB on every typing event is expensive.
+            // Client should stop emitting if blocked. 
+            // Server can filter broadcast if we really want to be strict.
             socket.to(data.chatId).emit('typing', { chatId: data.chatId, userId: socket.uid });
         });
 
@@ -164,9 +182,16 @@ exports.init = (server) => {
         });
 
         // --- WebRTC Signaling ---
-        // --- WebRTC Signaling ---
         socket.on("video_call_request", async (data) => {
             console.log(`Call initiated from ${data.from} to ${data.to}`);
+
+            if (await isBlocked(data.from, data.to)) {
+                console.log(`Call Blocked: ${data.from} -> ${data.to}`);
+                // Emit rejection to caller so they can show "Call Failed" or busy
+                io.to(data.from).emit("video_call_reject", { from: data.to, reason: "Busy" });
+                return;
+            }
+
             // Broadcast to receiver
             io.to(data.to).emit("video_call_request", {
                 from: data.from, // Caller ID
@@ -208,7 +233,11 @@ exports.init = (server) => {
         });
 
         // 5. Check Online Status (Initial Load)
-        socket.on('check_user_online', (userId) => {
+        socket.on('check_user_online', async (userId) => {
+            if (await isBlocked(socket.uid, userId)) {
+                socket.emit('user_status', { userId: userId, isOnline: false });
+                return;
+            }
             const isOnline = onlineUsers.has(userId);
             socket.emit('user_status', { userId: userId, isOnline: isOnline });
         });

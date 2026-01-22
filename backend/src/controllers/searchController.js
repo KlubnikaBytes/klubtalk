@@ -13,11 +13,20 @@ exports.globalSearch = async (req, res) => {
 
         const regex = new RegExp(q, 'i'); // Case insensitive
 
+        // 0. Get Blocked List
+        const me = await User.findById(currentUserId).select('blockedUsers blockedByUsers');
+        const blockedUsers = [
+            ...(me.blockedUsers || []),
+            ...(me.blockedByUsers || [])
+        ].map(id => id.toString());
+        const blockedSet = new Set(blockedUsers);
+
         // 1. Search Contacts (Users)
-        // Find users matching name or phone, excluding self
+        // Find users matching name or phone, excluding self AND blocked
         const contacts = await User.find({
             $and: [
                 { firebaseUid: { $ne: currentUserId } },
+                { firebaseUid: { $nin: blockedUsers } }, // Exclude blocked
                 {
                     $or: [
                         { name: regex },
@@ -28,13 +37,22 @@ exports.globalSearch = async (req, res) => {
         }).select('firebaseUid name phone avatar about').limit(10);
 
         // 2. Search Chats (Groups or Direct Names if implemented)
-        // For groups, search groupName.
-        // For DMs, we relies on Contacts search, but we can also check if a chat exists.
-        // Let's search Groups primarily here.
-        // Also ensure user is a participant.
-        const chats = await Chat.find({
+        // Exclude 1:1 chats with blocked users
+        // Since we can't easily filter by "peer is blocked" in query without aggregation...
+        // We fetch matches then filter in memory (limit 10 allows this).
+        let chats = await Chat.find({
             participants: currentUserId,
-            isGroup: true,
+            isGroup: true, // Focus on Groups here? The original logic said "isGroup: true". 
+            // If explicit global search for DM names exists, it would be separate. 
+            // The original code has `isGroup: true`. So we just keep it.
+            // Blocked users in groups? WhatsApp allows them in groups but hides direct interaction.
+            // Requirement: "NO chat screen... NO contact card".
+            // Typically blocked users are visible in common groups but messages are hidden/collapsed? 
+            // Or completely invisible? WhatsApp shows "Blocked Contact" in group list?
+            // "User B must COMPLETELY VANISH from User A’s app".
+            // If they share a group, hiding the GROUP is wrong. 
+            // Hiding the USER in the group list is the way. 
+            // But this is Search Chats (by Group Name). So it stays visible.
             groupName: regex
         }).select('_id groupName groupPhoto participants').limit(10);
 
@@ -50,7 +68,8 @@ exports.globalSearch = async (req, res) => {
         const messages = await Message.find({
             chatId: { $in: userChatIds },
             content: regex,
-            type: 'text' // Only search text messages
+            type: 'text',
+            senderId: { $nin: blockedUsers } // Exclude messages from blocked
         })
             .sort({ timestamp: -1 })
             .limit(20)

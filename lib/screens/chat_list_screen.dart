@@ -18,6 +18,8 @@ import 'package:whatsapp_clone/services/search_service.dart';
 import 'package:whatsapp_clone/widgets/global_search_overlay.dart';
 import 'package:whatsapp_clone/screens/camera/universal_camera_screen.dart';
 import 'package:whatsapp_clone/screens/status/status_tab.dart';
+import 'package:whatsapp_clone/screens/status/camera_status_screen.dart';
+import 'package:whatsapp_clone/screens/status/text_status_screen.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
 import 'package:whatsapp_clone/screens/call/call_logs_screen.dart';
 
@@ -54,7 +56,12 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
     super.initState();
     // 3 Tabs: Chats, Updates, Calls
     _tabController = TabController(length: 3, vsync: this);
-    
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+         setState(() {});
+      }
+    });
+
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -240,15 +247,70 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
               ),
           ],
         ),
-        floatingActionButton: !_isSearching ? FloatingActionButton(
-          backgroundColor: const Color(0xFFC92136),
-          child: const Icon(Icons.message, color: Colors.white),
-          onPressed: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen()));
-          },
-        ) : null,
+        floatingActionButton: _isSearching ? null : _buildFab(),
       ),
     );
+  }
+
+  Widget? _buildFab() {
+    final index = _tabController.index;
+    
+    // Tab 0: Chats -> New Chat
+    if (index == 0) {
+      return FloatingActionButton(
+        backgroundColor: const Color(0xFFC92136),
+        child: const Icon(Icons.message, color: Colors.white),
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen()));
+        },
+      );
+    }
+    
+    // Tab 1: Updates -> Camera (Standard WhatsApp)
+    if (index == 1) {
+       return Column(
+         mainAxisSize: MainAxisSize.min,
+         children: [
+            SizedBox(
+              height: 40,
+              width: 40,
+              child: FloatingActionButton(
+                heroTag: "btnTextStatus",
+                backgroundColor: Colors.grey[200],
+                elevation: 4,
+                child: const Icon(Icons.edit, color: Colors.black87),
+                onPressed: () {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => const TextStatusScreen()));
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            FloatingActionButton(
+              heroTag: "btnCameraStatus",
+              backgroundColor: const Color(0xFFC92136), 
+              child: const Icon(Icons.camera_alt, color: Colors.white),
+              onPressed: () {
+                 // Fix: Route to StatusCameraScreen
+                 Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen()));
+              },
+            ),
+         ],
+       );
+    }
+
+    // Tab 2: Calls -> New Call
+    if (index == 2) {
+       return FloatingActionButton(
+          backgroundColor: const Color(0xFFC92136),
+          child: const Icon(Icons.add_call, color: Colors.white),
+          onPressed: () {
+             // Re-use NewChatScreen as contact picker for calls
+             Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen(isCallSelection: true)));
+          },
+       );
+    }
+
+    return null;
   }
 
   PreferredSizeWidget _buildNormalAppBar() {

@@ -54,18 +54,18 @@ class _UniversalCameraScreenState extends State<UniversalCameraScreen> with Widg
       _cameras = await availableCameras();
       if (_cameras.isEmpty) return;
 
-      _startCamera(_selectedCameraIndex);
+      _startCamera(_selectedCameraIndex, enableAudio: false); // Default: Photo Mode
     } catch (e) {
       debugPrint("Camera init error: $e");
     }
   }
 
-  Future<void> _startCamera(int index) async {
+  Future<void> _startCamera(int index, {bool enableAudio = false}) async {
     final camera = _cameras[index];
     _controller = CameraController(
       camera,
       ResolutionPreset.high,
-      enableAudio: true,
+      enableAudio: enableAudio, // Dynamic audio binding
       imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.jpeg : ImageFormatGroup.bgra8888,
     );
 
@@ -141,6 +141,12 @@ class _UniversalCameraScreenState extends State<UniversalCameraScreen> with Widg
   }
 
   Future<void> _startVideo() async {
+    // 1. Re-init with Audio (Video Mode)
+    if (_controller != null) {
+       await _controller!.dispose(); // Dispose check
+    }
+    await _startCamera(_selectedCameraIndex, enableAudio: true); 
+
     if (_controller == null || !_controller!.value.isInitialized || _controller!.value.isRecordingVideo) return;
 
     try {
@@ -157,8 +163,20 @@ class _UniversalCameraScreenState extends State<UniversalCameraScreen> with Widg
     try {
       final XFile video = await _controller!.stopVideoRecording();
       setState(() => _isRecording = false);
-       if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => MediaPreviewScreen(filePath: video.path, isVideo: true)));
+      
+      // 2. Re-init without Audio (Photo Mode)
+      // Do this BEFORE navigation to ensure camera is clean when we come back or for background consistency
+      // Actually, navigation happens first, but we should reset state.
+      // Optimization: Dispose/Reinit might lag. 
+      // Let's navigate first, then reset in background or validation?
+      // No, for stability, let's just reset now.
+      
+      if (mounted) {
+         // Revert to Photo Mode
+         await _controller!.dispose();
+         await _startCamera(_selectedCameraIndex, enableAudio: false);
+
+         Navigator.push(context, MaterialPageRoute(builder: (_) => MediaPreviewScreen(filePath: video.path, isVideo: true)));
       }
     } catch (e) {
       debugPrint("Stop video error: $e");
