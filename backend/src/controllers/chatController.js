@@ -10,6 +10,7 @@ const getChatResponse = async (chatId, currentUserId) => {
         .populate('participants', 'name phone avatar about isOnline lastSeen')
         .populate('lastMessage')
         .populate('groupAdmin', 'name phone')
+        .populate('groupAdmins', 'name phone') // Populate admins
         .lean(); // Use lean to edit
 
     if (!chat || !currentUserId) return chat;
@@ -40,6 +41,24 @@ const getChatResponse = async (chatId, currentUserId) => {
     return chat;
 };
 
+// Helper: Check if user is group admin
+const isGroupAdmin = (chat, userId) => {
+    if (!chat.isGroup) return false;
+    // Check old single admin or new array
+    if (chat.groupAdmin && chat.groupAdmin.toString() === userId) return true;
+    if (chat.groupAdmins && chat.groupAdmins.some(a => a.toString() === userId)) return true;
+    return false;
+};
+
+// Helper: Check permission
+const hasPermission = (chat, userId, permissionKey) => {
+    // If admin, always true
+    if (isGroupAdmin(chat, userId)) return true;
+    // If permission is 'all', true
+    if (chat[permissionKey] === 'all') return true;
+    return false;
+};
+
 // --- Core Chat ---
 exports.getMyChats = async (req, res) => {
     try {
@@ -57,13 +76,7 @@ exports.getMyChats = async (req, res) => {
             ...(user?.blockedByUsers || [])
         ].map(id => id.toString()));
 
-        const enrichedChats = chats.filter(chat => {
-            if (chat.isGroup) return true; // Groups are usually visible? Requirement says "Chats list: Exclude blocked users". Usually means Private.
-            // Check if peer is blocked
-            const peer = chat.participants.find(p => p._id.toString() !== req.uid);
-            if (!peer) return false;
-            return !blockedSet.has(peer._id.toString());
-        }).map(chat => {
+        const enrichedChats = chats.map(chat => {
             // Sanitize participants for GROUPS (or remaining items)
             const sanitizedParticipants = chat.participants.map(p => {
                 if (blockedSet.has(p._id.toString())) {
@@ -143,6 +156,15 @@ exports.sendMessage = async (req, res) => {
                 }
             }
         }
+
+        // 2. Check Group Message Permission
+        if (chat && chat.isGroup && chat.sendMessagePermission === 'admins') {
+            const isAdmin = chat.groupAdmins?.some(adminId => adminId.toString() === req.uid) ||
+                chat.groupAdmin?.toString() === req.uid;
+            if (!isAdmin) {
+                return res.status(403).json({ error: "Only admins can send messages in this group." });
+            }
+        }
         // Fallback REST endpoint. Ideally use Socket.
         const message = await Message.create({
             chatId,
@@ -177,22 +199,36 @@ exports.sendMessage = async (req, res) => {
 };
 
 // --- Groups ---
-exports.createGroupChat = async (req, res) => {
+exports.createGroupChat = async (req, res, next) => {
+    console.log("Creating Group Chat Request Body:", JSON.stringify(req.body));
     try {
-        const { name, participants, avatar } = req.body;
-        // participants is array of IDs. Add self.
-        const allParticipants = [...new Set([...participants, req.uid])];
+        const { name, participants, avatar, description } = req.body;
 
+        // participants is array of IDs. Add self.
+        // Validate req.uid
+        if (!req.uid) throw new Error("User ID missing from request");
+
+        const allParticipants = [...new Set([...(participants || []), req.uid])];
+
+        console.log("Creating Chat Document...");
         const chat = await Chat.create({
             isGroup: true,
             groupName: name,
+            groupDescription: description || '',
             groupAdmin: req.uid,
+            groupAdmins: [req.uid],
             groupAvatar: avatar,
-            participants: allParticipants
+            participants: allParticipants,
+            createdBy: req.uid
         });
 
-        res.json(await getChatResponse(chat._id, req.uid));
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        console.log("Chat Created ID:", chat._id);
+        const fullChat = await getChatResponse(chat._id, req.uid);
+        res.json(fullChat);
+    } catch (e) {
+        console.error("Create Group Error Stack:", e);
+        res.status(500).json({ error: e.message || "Failed to create group" });
+    }
 };
 
 exports.createCommunity = async (req, res) => {
@@ -293,5 +329,274 @@ exports.getBlockedUsers = async (req, res) => {
     try {
         const user = await User.findById(req.uid).populate('blockedUsers', 'name phone avatar');
         res.json(user.blockedUsers || []);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// --- Group Management ---
+
+
+
+// Update Group Info (name, description, avatar)
+exports.updateGroupInfo = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { name, description, avatar } = req.body;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Check permission
+        const canEdit = chat.editInfoPermission === 'all' || isGroupAdmin(chat, req.uid);
+        if (!canEdit) {
+            return res.status(403).json({ error: 'You do not have permission to edit group info' });
+        }
+
+        if (name) chat.groupName = name;
+        if (description !== undefined) chat.groupDescription = description;
+        if (avatar !== undefined) chat.groupAvatar = avatar;
+
+        await chat.save();
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Update Group Permissions (admin only)
+exports.updateGroupPermissions = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { editInfoPermission, sendMessagePermission, addParticipantsPermission } = req.body;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Only admins can update permissions
+        if (!isGroupAdmin(chat, req.uid)) {
+            return res.status(403).json({ error: 'Only admins can update permissions' });
+        }
+
+        if (editInfoPermission) chat.editInfoPermission = editInfoPermission;
+        if (sendMessagePermission) chat.sendMessagePermission = sendMessagePermission;
+        if (addParticipantsPermission) chat.addParticipantsPermission = addParticipantsPermission;
+
+        await chat.save();
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Add Participant
+exports.addGroupParticipant = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { userId } = req.body;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Check permission
+        const canAdd = chat.addParticipantsPermission === 'all' || isGroupAdmin(chat, req.uid);
+        if (!canAdd) {
+            return res.status(403).json({ error: 'You do not have permission to add participants' });
+        }
+
+        // Add participant if not already in group
+        if (!chat.participants.includes(userId)) {
+            chat.participants.push(userId);
+            await chat.save();
+        }
+
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Update Group Info (Name, Description, Avatar)
+exports.updateGroupInfo = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { name, description, avatar } = req.body;
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+        if (!hasPermission(chat, req.uid, 'editInfoPermission')) {
+            return res.status(403).json({ error: 'Not authorized to edit group info' });
+        }
+
+        if (name) chat.groupName = name;
+        if (description !== undefined) chat.groupDescription = description;
+        if (avatar) chat.groupAvatar = avatar;
+
+        await chat.save();
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Update Permissions (Admin Only)
+exports.updateGroupPermissions = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { editInfoPermission, sendMessagePermission, addParticipantsPermission } = req.body;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+        if (!isGroupAdmin(chat, req.uid)) {
+            return res.status(403).json({ error: 'Only admins can change permissions' });
+        }
+
+        if (editInfoPermission) chat.editInfoPermission = editInfoPermission;
+        if (sendMessagePermission) chat.sendMessagePermission = sendMessagePermission;
+        if (addParticipantsPermission) chat.addParticipantsPermission = addParticipantsPermission;
+
+        await chat.save();
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Add Participant
+exports.addGroupParticipant = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { userId } = req.body;
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+        if (!hasPermission(chat, req.uid, 'addParticipantsPermission')) {
+            return res.status(403).json({ error: 'Not authorized to add participants' });
+        }
+
+        // Add if not exists
+        if (!chat.participants.includes(userId)) {
+            chat.participants.push(userId);
+            await chat.save();
+        }
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Remove Participant (admin only)
+exports.removeGroupParticipant = async (req, res) => {
+    try {
+        const { chatId, userId } = req.params;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Only admins can remove participants
+        if (!isGroupAdmin(chat, req.uid)) {
+            return res.status(403).json({ error: 'Only admins can remove participants' });
+        }
+
+        // Remove from participants
+        chat.participants = chat.participants.filter(p => p.toString() !== userId);
+
+        // Remove from admins if they were admin
+        if (chat.groupAdmins) {
+            chat.groupAdmins = chat.groupAdmins.filter(a => a.toString() !== userId);
+        }
+
+        await chat.save();
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Promote to Admin
+exports.promoteToAdmin = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        const { userId } = req.body;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Only admins can promote
+        if (!isGroupAdmin(chat, req.uid)) {
+            return res.status(403).json({ error: 'Only admins can promote members' });
+        }
+
+        // Initialize groupAdmins if not exists
+        if (!chat.groupAdmins) {
+            chat.groupAdmins = [chat.groupAdmin];
+        }
+
+        // Add to admins if not already
+        if (!chat.groupAdmins.some(a => a.toString() === userId)) {
+            chat.groupAdmins.push(userId);
+            await chat.save();
+        }
+
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Demote Admin
+exports.demoteAdmin = async (req, res) => {
+    try {
+        const { chatId, userId } = req.params;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        // Only admins can demote
+        if (!isGroupAdmin(chat, req.uid)) {
+            return res.status(403).json({ error: 'Only admins can demote admins' });
+        }
+
+        // Prevent removing last admin
+        if (chat.groupAdmins && chat.groupAdmins.length <= 1) {
+            return res.status(400).json({ error: 'Cannot remove the last admin' });
+        }
+
+        // Remove from admins
+        if (chat.groupAdmins) {
+            chat.groupAdmins = chat.groupAdmins.filter(a => a.toString() !== userId);
+            await chat.save();
+        }
+
+        res.json(await getChatResponse(chat._id, req.uid));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// Leave Group
+exports.leaveGroup = async (req, res) => {
+    try {
+        const { chatId } = req.params;
+
+        const chat = await Chat.findById(chatId);
+        if (!chat || !chat.isGroup) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+
+        const isAdmin = isGroupAdmin(chat, req.uid);
+
+        // If last admin, transfer to another participant
+        if (isAdmin && chat.groupAdmins && chat.groupAdmins.length === 1 && chat.participants.length > 1) {
+            const newAdmin = chat.participants.find(p => p.toString() !== req.uid);
+            if (newAdmin) {
+                chat.groupAdmins = [newAdmin];
+                chat.groupAdmin = newAdmin;
+            }
+        }
+
+        // Remove from participants
+        chat.participants = chat.participants.filter(p => p.toString() !== req.uid);
+
+        // Remove from admins
+        if (chat.groupAdmins) {
+            chat.groupAdmins = chat.groupAdmins.filter(a => a.toString() !== req.uid);
+        }
+
+        await chat.save();
+        res.json({ success: true, message: 'Left group successfully' });
     } catch (e) { res.status(500).json({ error: e.message }); }
 };

@@ -22,6 +22,7 @@ import 'package:whatsapp_clone/screens/status/camera_status_screen.dart';
 import 'package:whatsapp_clone/screens/status/text_status_screen.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
 import 'package:whatsapp_clone/screens/call/call_logs_screen.dart';
+import 'package:whatsapp_clone/widgets/navigation_panel.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -37,8 +38,10 @@ class MobileChatLayout extends StatefulWidget {
   State<MobileChatLayout> createState() => _MobileChatLayoutState();
 }
 
-class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _MobileChatLayoutState extends State<MobileChatLayout> {
+  // Navigation State
+  int _selectedNavIndex = 0; // 0: Chats, 1: Updates, 2: Calls, 3: Profile
+  bool _isPanelOpen = false;
   
   // Search State
   bool _isSearching = false;
@@ -54,14 +57,6 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    // 3 Tabs: Chats, Updates, Calls
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-         setState(() {});
-      }
-    });
-
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -69,7 +64,6 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
 
   @override
   void dispose() {
-    _tabController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _debounce?.cancel();
@@ -193,67 +187,102 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: _onWillPop,
-      child: Scaffold(
-        appBar: _isSearching ? _buildSearchBar() : _buildNormalAppBar(),
-        body: Stack(
-          children: [
-            TabBarView(
-              controller: _tabController,
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: _isSearching ? _buildSearchBar() : _buildNormalAppBar(),
+            body: Stack(
               children: [
-                 // Tab 1: Chats with Sub-Navbar
-                 Column(
-                   children: [
-                     // Sub-Navbar (Filters)
-                     Container(
-                       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
-                       color: Colors.white, // Distinct background, or transparent
-                       child: SingleChildScrollView(
-                         scrollDirection: Axis.horizontal,
-                         child: Row(
-                           children: [
-                             _buildFilterChip('All', 'all'),
-                             const SizedBox(width: 8),
-                             _buildFilterChip('Unread', 'unread'),
-                             const SizedBox(width: 8),
-                             _buildFilterChip('Favourites', 'favorites'),
-                             const SizedBox(width: 8),
-                             _buildFilterChip('Groups', 'groups'),
-                             const SizedBox(width: 8),
-                             _buildFilterChip('Communities', 'communities'),
-                           ],
-                         ),
-                       ),
-                     ),
-                     
-                     // Filtered List
-                     Expanded(child: ChatListScreen(filter: _chatFilter, isWeb: widget.isWeb, onChatSelected: widget.onChatSelected)),
-                   ],
-                 ),
-                 
-                 // Tab 2: Updates
-                 const StatusTab(),
-                 
-                 // Tab 3: Calls
-                 const CallLogsScreen(),
+                // Render screen based on selected navigation index
+                _buildCurrentScreen(),
+                
+                if (_isSearching)
+                  Positioned.fill(
+                    child: GlobalSearchOverlay(
+                      results: _searchResults, 
+                      isLoading: _isLoadingSearch, 
+                      onResultTap: _handleSearchResultTap
+                    ),
+                  ),
               ],
             ),
-            if (_isSearching)
-              Positioned.fill(
-                child: GlobalSearchOverlay(
-                  results: _searchResults, 
-                  isLoading: _isLoadingSearch, 
-                  onResultTap: _handleSearchResultTap
-                ),
-              ),
-          ],
-        ),
-        floatingActionButton: _isSearching ? null : _buildFab(),
+            floatingActionButton: _isSearching ? null : _buildFab(),
+          ),
+          
+          // Navigation Panel
+          NavigationPanel(
+            isOpen: _isPanelOpen,
+            onClose: () => setState(() => _isPanelOpen = false),
+            selectedIndex: _selectedNavIndex,
+            onNavigate: (index) {
+              setState(() {
+                _selectedNavIndex = index;
+                _isPanelOpen = false;
+              });
+            },
+            userName: AuthService().currentUser?['name'] ?? 'User',
+            userPhone: AuthService().currentUser?['phone'] ?? '',
+            userAvatar: AuthService().currentUser?['avatar'] ?? '',
+          ),
+        ],
       ),
     );
   }
 
+  Widget _buildCurrentScreen() {
+    switch (_selectedNavIndex) {
+      case 0: // Chats
+        return Column(
+          children: [
+            // Sub-Navbar (Filters)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+              color: Colors.white,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip('All', 'all'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Unread', 'unread'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Favourites', 'favorites'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Groups', 'groups'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Communities', 'communities'),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Filtered List
+            Expanded(
+              child: ChatListScreen(
+                filter: _chatFilter, 
+                isWeb: widget.isWeb, 
+                onChatSelected: widget.onChatSelected
+              )
+            ),
+          ],
+        );
+      
+      case 1: // Updates
+        return const StatusTab();
+      
+      case 2: // Calls
+        return const CallLogsScreen();
+      
+      case 3: // Profile
+        return const SettingsScreen();
+      
+      default:
+        return const Center(child: Text('Unknown screen'));
+    }
+  }
+
   Widget? _buildFab() {
-    final index = _tabController.index;
+    final index = _selectedNavIndex;
     
     // Tab 0: Chats -> New Chat
     if (index == 0) {
@@ -314,8 +343,23 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
   }
 
   PreferredSizeWidget _buildNormalAppBar() {
+    // Dynamic title based on selected screen
+    String getTitle() {
+      switch (_selectedNavIndex) {
+        case 0: return 'Chats';
+        case 1: return 'Updates';
+        case 2: return 'Calls';
+        case 3: return 'Profile';
+        default: return 'Messaging App';
+      }
+    }
+
     return AppBar(
-      title: const Text('Messaging App', style: TextStyle(fontWeight: FontWeight.bold)),
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        onPressed: () => setState(() => _isPanelOpen = true),
+      ),
+      title: Text(getTitle(), style: const TextStyle(fontWeight: FontWeight.bold)),
       actions: [
         IconButton(
           icon: const Icon(Icons.camera_alt_outlined), 
@@ -354,17 +398,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> with SingleTickerPr
           ],
         ),
       ],
-      bottom: TabBar(
-        controller: _tabController,
-        indicatorColor: Colors.white, // Keep OG indicator
-        // Make Sub-Navbar distinct? The user said "keep OG navbar design same".
-        // So we keep the TabBar as is, just change tabs.
-        tabs: const [
-           Tab(text: 'Chats'),
-           Tab(text: 'Updates'),
-           Tab(text: 'Calls'),
-        ],
-      ),
+
     );
   }
 
@@ -603,7 +637,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     // Listen to store changes to trigger rebuilds
-    return AnimatedBuilder(
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: AnimatedBuilder(
       animation: Listenable.merge([
         _store.archivedChatIds,
         _store.mutedChatIds,
@@ -755,7 +791,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             String name = '', avatarUrl = '', lastMsgText = '';
             if (isGroup) {
                  name = chatData['groupName'] ?? 'Group';
-                 avatarUrl = '';
+                 avatarUrl = chatData['groupAvatar'] ?? chatData['groupPhoto'] ?? '';
             } else {
                  final peerId = participants.firstWhere((id) => id != currentUid, orElse: () => 'Unknown');
                  // Match by _id or firebaseUid
@@ -862,6 +898,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           },
         );
       }
+    ),
     );
   }
 

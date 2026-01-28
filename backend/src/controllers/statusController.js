@@ -126,59 +126,42 @@ exports.getFeed = async (req, res) => {
     try {
         const currentUserId = req.uid;
 
-        // 1. Get My Contacts (People I have saved)
-        const myContacts = await Contact.find({ ownerUserId: currentUserId });
+        const me = await User.findById(currentUserId).select('name phone firebaseUid blockedUsers blockedByUsers profileType accountType');
+
+        // Debug logs as requested
+        console.log("VIEWER ID:", currentUserId);
+        console.log("VIEWER NAME:", me?.name);
+        console.log("VIEWER PROFILE TYPE:", me?.profileType || "Not Defined");
+        console.log("VIEWER ACCOUNT TYPE:", me?.accountType || "Not Defined");
+
+        // 1. Resolve all possible IDs for current user (handle split identity)
+        const myIds = [currentUserId, me?.firebaseUid].filter(Boolean);
+
+        // 2. Get My Contacts
+        const myContacts = await Contact.find({ ownerUserId: { $in: myIds } });
         const contactPhones = myContacts.map(c => c.phone);
 
-        // 2. Find Users matching these phones (The authors I want to see)
-        // Also fetch their block lists to filter MUTUAL visibility
-        // Optimization: Fetch only IDs, then filter using My Block List + Their ID check?
-        // Better: Filter in Feed Query?
-        // Status.userId is the author.
-        // We need to exclude authors who appear in my `blockedUsers` OR my `blockedByUsers`.
+        // 3. Resolve Authors from Contacts
+        const authors = await User.find({ phone: { $in: contactPhones } }).select('_id');
+        const authorIds = authors.map(u => u._id.toString());
 
-        const me = await User.findById(currentUserId).select('blockedUsers blockedByUsers');
         const excludeSet = new Set([
-            ...(me.blockedUsers || []),
-            ...(me.blockedByUsers || [])
+            ...(me?.blockedUsers || []),
+            ...(me?.blockedByUsers || [])
         ].map(id => id.toString()));
 
-        const authors = await User.find({ phone: { $in: contactPhones } }).select('_id');
-        const authorIds = authors
-            .map(u => u._id.toString())
-            .filter(id => !excludeSet.has(id)); // Filter out blocked/blocking authors
+        const allowedAuthorIds = authorIds.filter(id => !excludeSet.has(id));
+        const feedUserIds = [currentUserId, ...allowedAuthorIds];
 
-        // 3. Define Feed IDs (Authors + Me)
-        const feedUserIds = [currentUserId, ...authorIds];
+        console.log("STATUS OWNERS IN DB:", await Status.distinct("userId"));
+        console.log("ALLOWED USER IDS:", feedUserIds);
 
-        // 4. Aggregate with Privacy Checks
+        // 4. Aggregate Statuses (Simplified Filtering)
         const feed = await Status.aggregate([
             {
                 $match: {
                     userId: { $in: feedUserIds },
-                    createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // Last 24h
-                    $or: [
-                        // Case A: My Status
-                        { userId: currentUserId },
-
-                        // Case B: Contacts Privacy
-                        {
-                            privacy: 'contacts'
-                            // Implies author allows their contacts. 
-                            // Since I found this author via my address book, and assuming mutual/unilateral logic:
-                            // If they set 'contacts', and I have them saved (which I do, cuz I'm querying them), I see it.
-                        },
-                        // Case C: Exclude
-                        {
-                            privacy: 'exclude',
-                            excludedUsers: { $ne: currentUserId }
-                        },
-                        // Case D: Only
-                        {
-                            privacy: 'only',
-                            allowedUsers: currentUserId
-                        }
-                    ]
+                    createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24h
                 }
             },
             { $sort: { createdAt: 1 } }, // Oldest first (Story order)

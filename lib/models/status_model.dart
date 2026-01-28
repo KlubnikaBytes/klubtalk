@@ -48,7 +48,7 @@ class Status {
 
 class UserStatus {
   final String userId;
-  final String userName;
+  String userName;
   final String? userAvatar;
   final List<Status> statuses;
   final DateTime lastUpdate;

@@ -149,9 +149,25 @@ exports.updateProfile = async (req, res) => {
         // Automatically update lastSeen if online status changes? 
         // Or client sends it. Let's allow specific internal updates if needed, but for now strict whitelist.
 
-        const user = await User.findByIdAndUpdate(req.uid, updates, { new: true });
-        res.json(user);
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+};
+
+// Get User by ID (Public Profile)
+exports.getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Search by _id (ObjectId) OR firebaseUid (String)
+        const mongoose = require('mongoose');
+        const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { firebaseUid: id };
+
+        const user = await User.findOne(query).select('name phone about avatar lastSeen isOnline');
+
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        res.json(user);
+    } catch (e) {
+        res.status(500).json({ message: e.message });
     }
 };

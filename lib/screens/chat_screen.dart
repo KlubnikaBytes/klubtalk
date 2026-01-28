@@ -90,10 +90,20 @@ class _ChatScreenState extends State<ChatScreen> {
   int _currentMatchIndex = -1;
   bool _isLoadingSearch = false;
 
+  // Dynamic Group Info
+  String _displayName = '';
+  String _displayAvatar = '';
+
+
   @override
   void initState() {
     super.initState();
+    // Initialize with passed values
+    _displayName = widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown');
+    _displayAvatar = widget.isGroup ? (widget.groupPhoto ?? '') : (widget.contact?.profileImage ?? '');
+
     _loadMessages();
+    if (widget.isGroup) _loadGroupDetails(); // Load fresh group info
     _checkBlockStatus();
     _setupSocketListeners(); // Listen to socket
     SocketService().joinChat(widget.chatId); // Join Chat Room
@@ -279,6 +289,25 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadGroupDetails() async {
+    try {
+      final chats = await _chatService.getMyChats();
+      final currentChat = chats.firstWhere(
+        (c) => (c['_id'] ?? c['id']) == widget.chatId, 
+        orElse: () => {}
+      );
+      
+      if (currentChat.isNotEmpty && mounted) {
+         setState(() {
+             _displayName = currentChat['groupName'] ?? currentChat['name'] ?? 'Group';
+             _displayAvatar = currentChat['groupAvatar'] ?? currentChat['avatar'] ?? '';
+         });
+      }
+    } catch (e) {
+      print("Error loading group details: $e");
+    }
   }
 
   Future<void> _checkBlockStatus() async {
@@ -1170,7 +1199,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         title: Row(
           children: [
-            AvatarWidget(imageUrl: (widget.isGroup ? widget.groupPhoto : widget.contact?.profileImage) ?? '', radius: 18),
+            AvatarWidget(
+              imageUrl: _getFullUrl(widget.isGroup ? _displayAvatar : (widget.contact?.profileImage ?? '')), 
+              radius: 18
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: GestureDetector(
@@ -1180,13 +1212,17 @@ class _ChatScreenState extends State<ChatScreen> {
                    if (widget.isGroup) {
                       Navigator.push(context, MaterialPageRoute(builder: (c) => GroupDetailsScreen(chatId: widget.chatId, groupName: widget.groupName ?? 'Group', groupIcon: widget.groupPhoto ?? '')));
                    } else if (widget.contact != null) {
-                      Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId)));
+Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId, userId: widget.peerId)));
                    }
                 },
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.isGroup ? (widget.groupName ?? 'Group') : (widget.contact?.name ?? 'Unknown'), style: const TextStyle(fontSize: 18), overflow: TextOverflow.ellipsis),
+                    Text(
+                      widget.isGroup ? _displayName : (widget.contact?.name ?? 'Unknown'), 
+                      style: const TextStyle(fontSize: 18), 
+                      overflow: TextOverflow.ellipsis
+                    ),
                     if (!widget.isGroup && widget.contact != null && !_isPeerBlocked) // STEP 3: Kill online/typing status
                       _isPeerTyping 
                       ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFC92136))) 
@@ -1263,47 +1299,75 @@ class _ChatScreenState extends State<ChatScreen> {
                         )
                       );
                    } else if (widget.contact != null) {
-                      Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId)));
-                   }
-                   break;
-                 case 'media': 
-                   if (widget.isGroup) {
-                      Navigator.push(
-                        context, 
-                        MaterialPageRoute(
-                          builder: (context) => GroupMediaScreen(
-                            chatId: widget.chatId,
-                            groupName: widget.groupName ?? 'Group',
-                          )
-                        )
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId, userId: widget.peerId)));
                    }
                    break;
                  case 'search': _toggleSearch(); break;
-                 case 'mute': _showMuteDialog(); break;
-                 case 'disappearing': _showDisappearingDialog(); break;
                  case 'wallpaper': _showWallpaperDialog(); break;
-                 case 'more': break;
                  case 'report': _showReportDialog(); break;
-                 case 'block': _showBlockDialog(); break;
+                 case 'block_toggle': _toggleBlock(); break;
                }
             },
             itemBuilder: (context) {
               return [
                 PopupMenuItem(value: 'view_contact', child: Text(widget.isGroup ? 'Group info' : 'View contact')),
-                PopupMenuItem(value: 'media', child: Text(widget.isGroup ? 'Group media' : 'Media, links, and docs')),
                 const PopupMenuItem(value: 'search', child: Text('Search')),
-                const PopupMenuItem(value: 'mute', child: Text('Mute notifications')),
-                const PopupMenuItem(value: 'disappearing', child: Text('Disappearing messages')),
                 const PopupMenuItem(value: 'wallpaper', child: Text('Wallpaper')),
+                if (!widget.isGroup && widget.peerId.isNotEmpty) 
+                   PopupMenuItem(
+                     value: 'block_toggle', 
+                     child: Text(_isPeerBlocked ? 'Unblock' : 'Block')
+                   ),
                 const PopupMenuItem(value: 'report', child: Text('Report')),
-                if (!widget.isGroup && widget.peerId.isNotEmpty) const PopupMenuItem(value: 'block', child: Text('Block')),
-                const PopupMenuItem(value: 'more', child: Text('More')), 
               ];
             }
           ),
         ],
       );
+  }
+
+  void _toggleBlock() async {
+     if (_isPeerBlocked) {
+        // Unblock
+        try {
+          await _chatService.unblockUser(widget.peerId);
+          if (mounted) {
+             setState(() {
+               _blockedUserIds.remove(widget.peerId);
+             });
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Unblocked")));
+          }
+        } catch(e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to unblock")));
+        }
+     } else {
+        // Block
+        bool confirm = await showDialog(
+           context: context,
+           builder: (context) => AlertDialog(
+             title: Text("Block ${widget.contact?.name ?? 'contact'}?"),
+             content: const Text("Blocked contacts will no longer be able to call you or send you messages."),
+             actions: [
+               TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+               TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Block", style: TextStyle(color: Colors.red))),
+             ],
+           )
+        ) ?? false;
+
+        if (confirm) {
+            try {
+              await _chatService.blockUser(widget.peerId);
+               if (mounted) {
+                 setState(() {
+                   _blockedUserIds.add(widget.peerId);
+                 });
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Blocked")));
+               }
+            } catch(e) {
+               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to block")));
+            }
+        }
+     }
   }
 
   PreferredSizeWidget _buildSearchBar() {

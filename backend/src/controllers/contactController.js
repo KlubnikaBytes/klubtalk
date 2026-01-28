@@ -139,22 +139,40 @@ const syncContacts = async (req, res) => {
 
         // Get blocked list
         const me = await User.findById(req.user.uid).select('blockedUsers blockedByUsers');
-        const excludeIds = [
-            req.user.uid,
-            ...(me.blockedUsers || []),
-            ...(me.blockedByUsers || [])
-        ];
+
+        // Import mongoose for ObjectId validation
+        const mongoose = require('mongoose');
+
+        // Build excludeIds with validation to prevent CastError
+        const excludeIds = [req.user.uid];
+
+        // Add blocked users (filter out invalid ObjectIds)
+        if (me.blockedUsers && Array.isArray(me.blockedUsers)) {
+            me.blockedUsers.forEach(id => {
+                if (id && mongoose.Types.ObjectId.isValid(id)) {
+                    excludeIds.push(id);
+                }
+            });
+        }
+
+        // Add users who blocked me (filter out invalid ObjectIds)
+        if (me.blockedByUsers && Array.isArray(me.blockedByUsers)) {
+            me.blockedByUsers.forEach(id => {
+                if (id && mongoose.Types.ObjectId.isValid(id)) {
+                    excludeIds.push(id);
+                }
+            });
+        }
 
         // Find registered users with these numbers, excluding blocked
         const registeredUsers = await User.find({
             phone: { $in: normalizedInput },
-            _id: { $nin: excludeIds } // Exclude blocked users from Sync
+            _id: { $nin: excludeIds } // Now safe - all IDs are validated
         }).select('name phone avatar about isOnline lastSeen');
 
         const registeredPhones = new Set(registeredUsers.map(u => u.phone));
 
         // Identify unregistered contacts (phones from input that aren't in registeredUsers)
-        // We return the ORIGINAL input or Normalized? Normalized is better for future invites.
         const unregisteredContacts = normalizedInput.filter(p => !registeredPhones.has(p));
 
         res.json({

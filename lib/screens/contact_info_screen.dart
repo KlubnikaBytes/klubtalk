@@ -6,17 +6,22 @@ import 'package:whatsapp_clone/theme/app_theme.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
 import 'package:intl/intl.dart';
 import 'package:whatsapp_clone/main.dart' show scaffoldMessengerKey;
+import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/services/user_service.dart';
+import 'package:whatsapp_clone/config/api_config.dart'; // For Base URL if needed, or stick to model
 
 class ContactInfoScreen extends StatefulWidget {
   final Contact contact;
   final String peerId;
   final String chatId;
+  final String userId; // Add userId
 
   const ContactInfoScreen({
     super.key,
     required this.contact,
     required this.peerId,
     required this.chatId,
+    required this.userId, // Required now
   });
 
   @override
@@ -25,6 +30,7 @@ class ContactInfoScreen extends StatefulWidget {
 
 class _ContactInfoScreenState extends State<ContactInfoScreen> {
   final ChatService _chatService = ChatService();
+  final UserService _userService = UserService(); // UserService
   final ScrollController _scrollController = ScrollController();
   
   // Purple Theme Colors
@@ -36,12 +42,25 @@ class _ContactInfoScreenState extends State<ContactInfoScreen> {
   bool _isBlocked = false;
   List<Map<String, dynamic>> _commonGroups = [];
   bool _muteNotifications = false;
+  UserModel? _user; // User Model for dynamic data
+  bool _isLoading = true;
   
   @override
   void initState() {
     super.initState();
     _fetchInitialState();
     _fetchCommonGroups();
+    _fetchUserData(); // Fetch user data
+  }
+
+  Future<void> _fetchUserData() async {
+    final user = await _userService.getUserProfile(widget.userId);
+    if (mounted) {
+       setState(() {
+         _user = user;
+         _isLoading = false;
+       });
+    }
   }
 
   Future<void> _fetchInitialState() async {
@@ -86,277 +105,98 @@ class _ContactInfoScreenState extends State<ContactInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _backgroundColor,
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          _buildSliverAppBar(),
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                _buildProfileInfo(),
-                const SizedBox(height: 10),
-                _buildMediaLinkDocs(),
-                const SizedBox(height: 10),
-                _buildSettingsSection(),
-                const SizedBox(height: 10),
-                _buildEncryptionSection(),
-                const SizedBox(height: 10),
-                _buildGroupsSection(),
-                const SizedBox(height: 10),
-                _buildActionSection(),
-                const SizedBox(height: 50),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    // Resolve Image URL
+    final String? backendAvatar = _user?.profilePhotoUrl;
+    final String? contactAvatar = widget.contact.profileImage;
+    String displayImage = '';
+    
+    if (backendAvatar != null && backendAvatar.isNotEmpty) {
+      displayImage = ApiConfig.getFullImageUrl(backendAvatar);
+    } else if (contactAvatar != null && contactAvatar.isNotEmpty) {
+       displayImage = ApiConfig.getFullImageUrl(contactAvatar);
+    }
 
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 350.0,
-      pinned: true,
-      backgroundColor: _primaryColor,
-      title: Text(widget.contact.name), 
-      flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          alignment: Alignment.bottomLeft,
+    // Resolve Name (Prioritize Saved Contact Name)
+    final String displayName = widget.contact.name.isNotEmpty 
+        ? widget.contact.name 
+        : (_user?.name ?? 'Unknown');
+
+    // Resolve Phone
+    final String displayPhone = _user?.phoneNumber.isNotEmpty == true 
+        ? "+${_user!.phoneNumber}" 
+        : "+91 XXXXX XXXXX"; // Fallback or maybe widget.contact doesn't have phone easily accessible here without lookup, but usually we prefer backend phone if available.
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("Contact Info", style: TextStyle(color: Colors.black)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: SingleChildScrollView(
+        child: Column(
           children: [
-             widget.contact.profileImage.isNotEmpty
-                 ? Image.network(widget.contact.profileImage, fit: BoxFit.cover, width: double.infinity, height: double.infinity)
-                 : Container(color: Colors.grey[300], child: Icon(Icons.person, size: 150, color: Colors.white)),
-             Container(
-               decoration: BoxDecoration(
-                 gradient: LinearGradient(
-                   begin: Alignment.topCenter,
-                   end: Alignment.bottomCenter,
-                   colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                 ),
-               ),
-             ),
-             Padding(
-               padding: const EdgeInsets.all(16.0),
-               child: Text(
-                 widget.contact.name,
-                 style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-               ),
-             ),
+            const SizedBox(height: 20),
+            
+            // 1. Profile Photo
+            Center(
+              child: CircleAvatar(
+                radius: 55,
+                backgroundColor: Colors.grey[200],
+                backgroundImage: displayImage.isNotEmpty ? NetworkImage(displayImage) : null,
+                child: displayImage.isEmpty ? const Icon(Icons.person, size: 60, color: Colors.grey) : null,
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 2. Display Name
+            Text(
+              displayName,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black),
+              textAlign: TextAlign.center,
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // 3. Phone Number
+            Text(
+              displayPhone,
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+            
+            const SizedBox(height: 20),
+            const Divider(thickness: 0.5),
+            const SizedBox(height: 10),
+            
+            // 4. Actions (Block & Report)
+            ListTile(
+              leading: const Icon(Icons.block, color: Colors.red),
+              title: Text(_isBlocked ? "Unblock Contact" : "Block Contact", style: const TextStyle(color: Colors.red, fontSize: 16)),
+              onTap: _toggleBlock,
+            ),
+            
+            ListTile(
+              leading: const Icon(Icons.thumb_down_alt_outlined, color: Colors.red),
+              title: const Text("Report Contact", style: TextStyle(color: Colors.red, fontSize: 16)),
+              onTap: _showReportDialog,
+            ),
+            
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileInfo() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-           Text(
-             "+1 123 456 7890", 
-             style: const TextStyle(fontSize: 18, color: Colors.black87),
-           ),
-           const SizedBox(height: 4),
-           const Text("Mobile", style: TextStyle(color: Colors.grey, fontSize: 13)),
-           const SizedBox(height: 20),
-           Row(
-             mainAxisAlignment: MainAxisAlignment.spaceAround,
-             children: [
-                _buildActionButton(Icons.call, "Audio"),
-                _buildActionButton(Icons.videocam, "Video"),
-                _buildActionButton(Icons.search, "Search"),
-                _buildActionButton(Icons.attach_money, "Pay"),
-             ],
-           ),
-           const Divider(height: 30),
-           Text(
-             "Hey there! I am using WhatsApp.",
-             style: const TextStyle(fontSize: 16, color: Colors.black87),
-           ),
-           const SizedBox(height: 4),
-           Text(
-             DateFormat('MMMM dd, yyyy').format(DateTime.now()),
-             style: const TextStyle(color: Colors.grey, fontSize: 13),
-           ),
-        ],
-      ),
-    );
-  }
+  // --- ACTIONS (Logic Preserved) ---
 
-  Widget _buildActionButton(IconData icon, String label) {
-    return GestureDetector(
-      onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label action tapped")));
-      },
-      child: Column(
-        children: [
-          Icon(icon, color: _primaryColor, size: 28),
-          const SizedBox(height: 6),
-          Text(label, style: TextStyle(color: _primaryColor, fontSize: 13, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildMediaLinkDocs() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        children: [
-           Row(
-             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-             children: [
-               const Text("Media, links, and docs", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-               Row(
-                 children: const [
-                   Text("120", style: TextStyle(color: Colors.grey, fontSize: 14)), 
-                   Icon(Icons.keyboard_arrow_right, color: Colors.grey),
-                 ],
-               )
-             ],
-           ),
-           const SizedBox(height: 12),
-           SizedBox(
-             height: 80,
-             child: ListView.separated(
-               scrollDirection: Axis.horizontal,
-               itemCount: 6,
-               separatorBuilder: (c, i) => const SizedBox(width: 8),
-               itemBuilder: (c, i) {
-                  return Container(
-                    width: 75,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!)
-                    ),
-                    child: Center(
-                      child: Icon(Icons.image, color: Colors.grey[400]),
-                    ),
-                  );
-               },
-             ),
-           )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsSection() {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          _buildListTile(
-            "Mute notifications", 
-            icon: Icons.notifications_off_outlined,
-            onTap: _showMuteDialog,
-          ),
-          const Divider(height: 1, indent: 60),
-          _buildListTile("Custom notifications", icon: Icons.tune),
-          const Divider(height: 1, indent: 60),
-          _buildListTile("Media visibility", icon: Icons.image),
-           const Divider(height: 1, indent: 60),
-          _buildListTile("Starred messages", icon: Icons.star_border), 
-           const Divider(height: 1, indent: 60),
-           _buildListTile("Translate messages", icon: Icons.translate), 
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEncryptionSection() {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          _buildListTile(
-            "Encryption", 
-            subtitle: "Messages and calls are end-to-end encrypted. Tap to verify.",
-            icon: Icons.lock_outline
-          ),
-          const Divider(height: 1, indent: 60),
-          _buildListTile(
-            "Disappearing messages", 
-            subtitle: "Off",
-            icon: Icons.timer_outlined,
-            onTap: _showDisappearingDialog,
-          ),
-        ],
-      ),
-    );
-  }
   
-  Widget _buildGroupsSection() {
-      return Container(
-        color: Colors.white,
-        child: Column(
-           crossAxisAlignment: CrossAxisAlignment.start,
-           children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text("${_commonGroups.length} group${_commonGroups.length != 1 ? 's' : ''} in common", style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500)),
-              ),
-              _buildListTile(
-                 "Create group with ${widget.contact.name}", 
-                 icon: Icons.group_add_outlined, 
-                 isAction: true,
-              ),
-              const Divider(height: 1, indent: 60),
-              ..._commonGroups.map((g) => ListTile(
-                 leading: AvatarWidget(imageUrl: g['groupPhoto'] ?? '', radius: 20),
-                 title: Text(g['groupName'] ?? 'Group'),
-                 subtitle: Text("${(g['participants'] as List?)?.length ?? 0} participants"),
-                 onTap: () {}, 
-               )),
-           ],
-        ),
-      );
-  }
+  // ... Keeping _toggleBlock and _showReportDialog ...
 
-  Widget _buildActionSection() {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          _buildActionTile(
-            _isBlocked ? "Unblock ${widget.contact.name}" : "Block ${widget.contact.name}", 
-            Icons.block, 
-            Colors.red, 
-            _toggleBlock
-          ),
-          const Divider(height: 1, indent: 60),
-          _buildActionTile("Report ${widget.contact.name}", Icons.thumb_down_alt_outlined, Colors.red, _showReportDialog), 
-        ],
-      ),
-    );
-  }
-
-  Widget _buildListTile(String title, {String? subtitle, IconData? icon, Widget? trailing, bool isAction = false, VoidCallback? onTap}) {
-     return ListTile(
-       leading: icon != null ? Icon(icon, color: isAction ? _primaryColor : Colors.grey[600]) : null,
-       title: Text(title, style: const TextStyle(fontSize: 16)),
-       subtitle: subtitle != null ? Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)) : null,
-       trailing: trailing,
-       onTap: onTap,
-     );
-  }
-
-  Widget _buildActionTile(String title, IconData icon, Color color, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(title, style: TextStyle(color: color, fontSize: 16)),
-      onTap: onTap,
-    );
-  }
-
-  // --- ACTIONS ---
 
   void _showMuteDialog() {
     int? selectedValue = 0; 

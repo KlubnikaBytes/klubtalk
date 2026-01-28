@@ -64,14 +64,18 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
     _videoController = null;
     
     if (status.type == 'video') {
-       _videoController = VideoPlayerController.networkUrl(Uri.parse(status.content))
-         ..initialize().then((_) {
+       _videoController = VideoPlayerController.networkUrl(
+         Uri.parse(status.content),
+         httpHeaders: const {'Connection': 'keep-alive'}, // Explicit headers
+       )..initialize().then((_) {
             if (mounted) {
               setState(() {});
               _videoController!.play();
               _animController.duration = _videoController!.value.duration;
               _animController.forward(from: 0);
             }
+         }).catchError((error) {
+            debugPrint("❌ ERROR loading status video (Work Profile check): $error");
          });
     } else { // Image or Text
        _animController.duration = _imageDuration;
@@ -317,9 +321,22 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
 
     return CachedNetworkImage(
        imageUrl: status.content,
+       httpHeaders: const {'Connection': 'keep-alive'}, // Explicit headers
        fit: BoxFit.contain, // WhatsApp fits contain with black bg usually
        placeholder: (_,__) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-       errorWidget: (_,e,trace) => const Icon(Icons.broken_image, color: Colors.white),
+       errorWidget: (_,e,trace) {
+          debugPrint("❌ ERROR loading status image (Work Profile likely blocked): $e");
+          return const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+               Icon(Icons.broken_image, color: Colors.white, size: 50),
+               SizedBox(height: 10),
+               Text("Failed to load\nCheck connection", 
+                   textAlign: TextAlign.center, 
+                   style: TextStyle(color: Colors.white))
+            ],
+          );
+       },
     );
   }
 

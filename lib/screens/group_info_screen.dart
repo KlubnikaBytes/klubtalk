@@ -49,7 +49,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
              );
          }
       } else {
-         final chatId = await _chatService.createGroupChat(name, widget.selectedParticipantIds);
+         final chatId = await _chatService.createGroupChat(name, widget.selectedParticipantIds, description: _descriptionController.text.trim());
          if (mounted) {
             Navigator.popUntil(context, (route) => route.isFirst); 
             final groupContact = Contact(name: name, profileImage: '', isOnline: false);

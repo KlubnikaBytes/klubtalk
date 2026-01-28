@@ -8,11 +8,18 @@ import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/models/status_model.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
+import 'package:whatsapp_clone/services/local_cache_service.dart';
+
+import 'package:whatsapp_clone/services/contact_service.dart';
 
 class StatusService {
   static final StatusService _instance = StatusService._internal();
   factory StatusService() => _instance;
   StatusService._internal();
+
+  // Local Cache Service Instance
+  final _cache = LocalCacheService();
+  final _contactService = ContactService();
 
   Future<String?> _getToken() async => AuthService().token;
 
@@ -58,17 +65,40 @@ class StatusService {
     );
   }
 
+  // Get Feed (with cache-first pattern and 24-hour expiry)
   Future<List<dynamic>> getFeed() async {
-    final token = await _getToken();
-    final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/status/feed'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    try {
+      final token = await _getToken();
+      
+      // 1️⃣ Load instantly from cache (auto-expires after 24h)
+      final cachedStatus = await _cache.getCachedStatus();
+      
+      // 2️⃣ Fetch from server in background
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/status/feed'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final feedData = jsonDecode(response.body);
+        
+        // 3️⃣ Update cache with fresh data and timestamp
+        await _cache.cacheStatus(feedData);
+        
+        return feedData;
+      } else {
+        // If API fails, return cached data (if not expired)
+        return cachedStatus;
+      }
+    } catch (e) {
+      print('Error fetching status feed: $e');
+      // Return cached data on error (if not expired)
+      try {
+        return await _cache.getCachedStatus();
+      } catch (_) {
+        return [];
+      }
     }
-    return [];
   }
 
   Future<void> viewStatus(String statusId) async {
@@ -152,6 +182,15 @@ class StatusService {
         final currentUserId = AuthService().currentUserId;
 
         List<UserStatus> allStatuses = feedData.map((e) => UserStatus.fromJson(e)).toList();
+
+        // 0. Resolve Names (Backend sends 'userName', we override with Contact Name or You)
+        for (var s in allStatuses) {
+            if (s.userId == currentUserId) {
+                s.userName = "You";
+            } else {
+                s.userName = await _contactService.resolveContactName(s.userId);
+            }
+        }
 
         // 1. Extract My Status
         try {

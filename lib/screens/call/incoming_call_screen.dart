@@ -111,7 +111,9 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                           onTap: () {
                              if (_isAccepting) return;
                              WebrtcService().rejectCall(widget.callData['from']);
-                             if (mounted) Navigator.pop(context);
+                             if (mounted && Navigator.canPop(context)) {
+                                Navigator.pop(context);
+                             }
                           },
                           child: const CircleAvatar(
                             radius: 35,

@@ -19,10 +19,7 @@ class AvatarWidget extends StatelessWidget {
     final bool hasImage = imageUrl.isNotEmpty;
     
     // 2. Construct full URL if relative
-    String fullUrl = imageUrl;
-    if (hasImage && !imageUrl.startsWith('http')) {
-        fullUrl = '${ApiConfig.baseUrl}$imageUrl';
-    }
+    String fullUrl = ApiConfig.getFullImageUrl(imageUrl);
 
     // DEBUG: Verify final URL
     // DEBUG: Verify final URL

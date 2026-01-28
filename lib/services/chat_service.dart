@@ -4,8 +4,12 @@ import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/services/media_upload_service.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
+import 'package:whatsapp_clone/services/local_cache_service.dart';
 
 class ChatService {
+
+  // Local Cache Service Instance
+  final _cache = LocalCacheService();
 
   // Helper to get headers with Auth Token
   Future<Map<String, String>> _getHeaders() async {
@@ -193,57 +197,100 @@ class ChatService {
     }
   }
 
-  // Get My Chats
+  // Get My Chats (with cache-first pattern)
   Future<List<Map<String, dynamic>>> getMyChats() async {
-    final response = await http.get(
-      Uri.parse(ApiConfig.chatsEndpoint),
-      headers: await _getHeaders(),
-    );
+    try {
+      // 1️⃣ Load instantly from cache
+      final cachedChats = await _cache.getCachedChats();
+      
+      // 2️⃣ Fetch from server in background
+      final response = await http.get(
+        Uri.parse(ApiConfig.chatsEndpoint),
+        headers: await _getHeaders(),
+      );
 
-    if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
-    } else {
-      throw Exception('Failed to load chats');
+      if (response.statusCode == 200) {
+        final chats = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+        
+        // 3️⃣ Update cache with fresh data
+        await _cache.cacheChats(chats);
+        
+        return chats;
+      } else {
+        // If API fails, return cached data
+        return List<Map<String, dynamic>>.from(cachedChats);
+      }
+    } catch (e) {
+      print('Error fetching chats: $e');
+      // Return cached data on error
+      try {
+        final cachedChats = await _cache.getCachedChats();
+        return List<Map<String, dynamic>>.from(cachedChats);
+      } catch (_) {
+        return [];
+      }
     }
   }
 
-  // Get Messages for a Chat
+  // Get Messages for a Chat (with cache-first pattern)
   Future<List<Map<String, dynamic>>> getMessages(String chatId) async {
-    final response = await http.get(
-      Uri.parse('${ApiConfig.messagesEndpoint}/$chatId'),
-      headers: await _getHeaders(),
-    );
+    try {
+      // 1️⃣ Load instantly from cache
+      final cachedMessages = await _cache.getCachedMessages(chatId);
+      
+      // 2️⃣ Fetch from server in background
+      final response = await http.get(
+        Uri.parse('${ApiConfig.messagesEndpoint}/$chatId'),
+        headers: await _getHeaders(),
+      );
 
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((m) {
-         final map = Map<String, dynamic>.from(m);
-         // Fix: Map createdAt to timestamp
-         if (map['timestamp'] == null && map['createdAt'] != null) {
-            map['timestamp'] = map['createdAt'];
-         }
-         return map;
-      }).toList();
-    } else {
-      throw Exception('Failed to load messages');
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final messages = data.map((m) {
+           final map = Map<String, dynamic>.from(m);
+           // Fix: Map createdAt to timestamp
+           if (map['timestamp'] == null && map['createdAt'] != null) {
+              map['timestamp'] = map['createdAt'];
+           }
+           return map;
+        }).toList();
+        
+        // 3️⃣ Update cache with fresh data
+        await _cache.cacheMessages(chatId, messages);
+        
+        return messages;
+      } else {
+        // If API fails, return cached data
+        return List<Map<String, dynamic>>.from(cachedMessages);
+      }
+    } catch (e) {
+      print('Error fetching messages: $e');
+      // Return cached data on error
+      try {
+        final cachedMessages = await _cache.getCachedMessages(chatId);
+        return List<Map<String, dynamic>>.from(cachedMessages);
+      } catch (_) {
+        return [];
+      }
     }
   }
 
   // Create Group Chat
-  Future<String> createGroupChat(String groupName, List<String> participantUids, {String? groupPhotoUrl}) async {
+  Future<String> createGroupChat(String groupName, List<String> participantUids, {String? groupPhotoUrl, String? description}) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.chatsEndpoint}/group'),
       headers: await _getHeaders(),
       body: jsonEncode({
-        'groupName': groupName,
+        'name': groupName,
         'participants': participantUids,
-        'groupPhoto': groupPhotoUrl,
+        'avatar': groupPhotoUrl,
+        'description': description ?? '',
       }),
     );
 
-    if (response.statusCode == 201) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      return data['chatId'] ?? data['_id'];
+      return data['chatId'] ?? data['_id'] ?? data['id'];
     } else {
       throw Exception('Failed to create group: ${response.body}');
     }

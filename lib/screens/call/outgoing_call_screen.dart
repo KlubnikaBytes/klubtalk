@@ -109,7 +109,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
               child: GestureDetector(
                 onTap: () {
                    _webrtcService.endCall();
-                   if (mounted) Navigator.pop(context);
+                   if (mounted && Navigator.canPop(context)) {
+                      Navigator.pop(context);
+                   }
                 },
                 child: const CircleAvatar(
                   radius: 35,

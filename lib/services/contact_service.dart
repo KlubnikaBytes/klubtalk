@@ -5,10 +5,14 @@ import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/utils/permission_helper.dart';
 import 'package:whatsapp_clone/models/contact.dart' as app_contact;
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/services/local_cache_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
 
 class ContactService {
+
+  // Local Cache Service Instance
+  final _cache = LocalCacheService();
 
   // Check Current Permission Status
   Future<PermissionStatus> getPermissionStatus() async {
@@ -50,12 +54,29 @@ class ContactService {
     return [];
   }
 
-  // Fetch ALL Registered Users via API
+  // Fetch ALL Registered Users via API (with cache-first pattern)
   Future<List<UserModel>> getRegisteredUsers() async {
      try {
        final token = AuthService().token;
        if (token == null) return [];
 
+       // 1️⃣ Load instantly from cache
+       final cachedData = await _cache.getCachedContacts();
+       List<UserModel> cachedUsers = [];
+       if (cachedData.isNotEmpty) {
+         try {
+           cachedUsers = (cachedData as List).map((item) {
+             if (item is Map<String, dynamic>) {
+               return UserModel.fromMap(item, item['_id'] ?? '');
+             }
+             return null;
+           }).whereType<UserModel>().toList();
+         } catch (e) {
+           print('Cache parse error: $e');
+         }
+       }
+
+       // 2️⃣ Fetch from server in background
        final response = await http.get(
          Uri.parse('${ApiConfig.baseUrl}/users'),
          headers: {
@@ -65,14 +86,54 @@ class ContactService {
 
        if (response.statusCode == 200) {
          final List<dynamic> data = jsonDecode(response.body);
+         
+         // 3️⃣ Update cache with fresh data
+         await _cache.cacheContacts(data);
+         
          return data.map((item) => UserModel.fromMap(item, item['_id'] ?? '')).toList();
        }
-       return [];
+       
+       // If API fails, return cached data
+       return cachedUsers;
      } catch (e) {
        print('Error fetching users: $e');
+       // Return cached data on error
+       try {
+         final cachedData = await _cache.getCachedContacts();
+         if (cachedData.isNotEmpty) {
+           return (cachedData as List).map((item) {
+             if (item is Map<String, dynamic>) {
+               return UserModel.fromMap(item, item['_id'] ?? '');
+             }
+             return null;
+           }).whereType<UserModel>().toList();
+         }
+       } catch (_) {}
        return [];
      }
   }
+
+   // Fetch Single User by ID
+   Future<UserModel?> getUserById(String userId) async {
+       try {
+           final token = AuthService().token;
+           if (token == null) return null;
+           
+           final response = await http.get(
+               Uri.parse('${ApiConfig.baseUrl}/users/$userId'),
+               headers: {'Authorization': 'Bearer $token'}
+           );
+
+           if (response.statusCode == 200) {
+               final data = jsonDecode(response.body);
+               return UserModel.fromMap(data, data['_id'] ?? data['id'] ?? userId);
+           }
+           return null;
+       } catch (e) {
+           print("Error fetching user by ID: $e");
+           return null;
+       }
+   }
 
   // Add Contact via API
   Future<void> addContact(String name, String phone) async {
@@ -147,17 +208,23 @@ class ContactService {
   // Resolve Contact Name from Peer ID
   Future<String> resolveContactName(String peerId) async {
      try {
-       // 1. Get All Registered Users (to find phone number of peerId)
-       // Optimization: In a real app, use GET /users/:id or check local DB. 
-       // Here we rely on getRegisteredUsers as per constraints.
+       // 1. Try to find in Cached/FetchAll list
        List<UserModel> users = await getRegisteredUsers();
        
-       final user = users.firstWhere(
-           (u) => u.uid == peerId, 
-           orElse: () => UserModel(uid: '', phoneNumber: '', name: 'Unknown')
-       );
+       UserModel? user;
+       try {
+         user = users.firstWhere((u) => u.uid == peerId);
+       } catch (_) {
+          // Not found in list? Try fetching directly
+          print("User $peerId not found in list, fetching directly...");
+          user = await getUserById(peerId);
+       }
        
-       if (user.phoneNumber.isEmpty) return 'Unknown'; // Fallback
+       if (user == null) {
+          print("User $peerId could not be resolved.");
+          return 'Unknown';
+       }
+       if (user.phoneNumber.isEmpty) return 'Unknown'; 
        
        // 2. Get Device Contacts
        final deviceContacts = await getDeviceContacts();
@@ -174,8 +241,7 @@ class ContactService {
        
         // 4. Fallback to User Name if not in contacts
         // STRICT RULE: If not in contacts, show Phone Number ONLY. 
-        // Do NOT show user.name from backend.
-        return user.phoneNumber.isNotEmpty ? user.phoneNumber : 'Unknown';
+        return user.phoneNumber;
         
       } catch (e) {
         print("Name Resolution Error: $e");

@@ -21,10 +21,12 @@ router.put('/auth/me', verifyToken, authController.updateProfile);
 // The user said "Only authentication must change". Update profile logic is likely `User` logic.
 // I will keep `getAllUsers`.
 
-router.get('/users', verifyToken, authController.getAllUsers); // IMPORTANT: I need to add getAllUsers to the new authController or move it to userController.
 // Current authController.js ONLY has sendOtp, verifyOtp, getMe.
 // I need to add getAllUsers back to authController? Or move it.
 // To avoid breaking chat, I should add getAllUsers to authController.js.
+
+router.get('/users/:id', verifyToken, authController.getUserById);
+router.get('/users', verifyToken, authController.getAllUsers); // IMPORTANT: I need to add getAllUsers to the new authController or move it to userController.
 
 
 // --- MEDIA ROUTES (Hybrid Backend) ---
@@ -56,6 +58,16 @@ router.post('/chats/mute', verifyToken, chatController.muteChat);
 router.post('/chats/disappearing', verifyToken, chatController.setDisappearingTimer);
 router.post('/chats/wallpaper', verifyToken, chatController.setChatTheme);
 router.post('/chats/report', verifyToken, chatController.reportChat);
+
+// --- GROUP MANAGEMENT ROUTES ---
+router.put('/chats/:chatId/info', verifyToken, chatController.updateGroupInfo);
+router.put('/chats/:chatId/permissions', verifyToken, chatController.updateGroupPermissions);
+router.post('/chats/:chatId/participants', verifyToken, chatController.addGroupParticipant);
+router.delete('/chats/:chatId/participants/:userId', verifyToken, chatController.removeGroupParticipant);
+router.post('/chats/:chatId/admins', verifyToken, chatController.promoteToAdmin);
+router.delete('/chats/:chatId/admins/:userId', verifyToken, chatController.demoteAdmin);
+router.post('/chats/:chatId/leave', verifyToken, chatController.leaveGroup);
+
 
 // New Block Routes per architecture
 router.post('/block-user', verifyToken, chatController.blockUser);

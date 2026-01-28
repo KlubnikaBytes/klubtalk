@@ -7,7 +7,7 @@ class ApiConfig {
     if (kIsWeb) {
       url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:5000';
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.12:5000';
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.8:5000';
     } else {
       // iOS, Windows, macOS, Linux
       url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://127.0.0.1:5000';
@@ -22,4 +22,11 @@ class ApiConfig {
   
   static String get chatsEndpoint => '$baseUrl/chats';
   static String get messagesEndpoint => '$baseUrl/messages';
+
+  // Helper to resolve full image URL
+  static String getFullImageUrl(String? path) {
+    if (path == null || path.isEmpty) return "";
+    if (path.startsWith("http")) return path;
+    return "$baseUrl$path";
+  }
 }

@@ -209,8 +209,8 @@ class _CameraStatusScreenState extends State<CameraStatusScreen> with WidgetsBin
   }
   
   void _openPreview(File file, String type) {
-     Navigator.pushReplacement(context, MaterialPageRoute(
-       builder: (_) => StatusMediaPreviewScreen(file: file, type: type)
+     Navigator.push(context, MaterialPageRoute(
+       builder: (_) => StatusMediaPreviewScreen(file: file, type: type, comeFromCamera: true)
      ));
   }
 

@@ -121,14 +121,16 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
     }
 
     if (logs.isEmpty) {
-      return const Center(child: Text("No recent calls"));
+      return const Scaffold(backgroundColor: Colors.white, body: Center(child: Text("No recent calls")));
     }
 
-    return ListView.builder(
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: ListView.builder(
       itemCount: logs.length,
       itemBuilder: (context, index) {
         final log = logs[index];
@@ -217,6 +219,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
           },
         );
       },
+    ),
     );
   }
 }

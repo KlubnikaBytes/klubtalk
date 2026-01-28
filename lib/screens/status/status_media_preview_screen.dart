@@ -8,8 +8,14 @@ import 'package:whatsapp_clone/screens/status/status_privacy_screen.dart';
 class StatusMediaPreviewScreen extends StatefulWidget {
   final File file;
   final String type; // 'image' or 'video'
+  final bool comeFromCamera;
 
-  const StatusMediaPreviewScreen({super.key, required this.file, required this.type});
+  const StatusMediaPreviewScreen({
+    super.key, 
+    required this.file, 
+    required this.type,
+    this.comeFromCamera = false,
+  });
 
   @override
   State<StatusMediaPreviewScreen> createState() => _StatusMediaPreviewScreenState();
@@ -75,8 +81,10 @@ class _StatusMediaPreviewScreenState extends State<StatusMediaPreviewScreen> {
        );
        
        if (mounted) {
-         Navigator.pop(context); // Close Preview
-         Navigator.pop(context); // Close Camera (if stacked)
+         Navigator.pop(context); // Always close preview
+         if (widget.comeFromCamera && Navigator.canPop(context)) {
+            Navigator.pop(context); // Also close camera if it's there
+         }
        }
      } catch (e) {
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed: $e")));

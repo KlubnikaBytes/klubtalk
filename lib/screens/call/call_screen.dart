@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
+import 'package:whatsapp_clone/services/contact_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String peerName;
@@ -31,13 +32,28 @@ class _CallScreenState extends State<CallScreen> {
   final ValueNotifier<String> _status = ValueNotifier("Connecting...");
   final ValueNotifier<bool> _micEnabled = ValueNotifier(true);
   
+  late String _displayName;
+  
   // No video toggle state needed strictly if we just trust service, but nice to flip icon
   // We can just query service logic or keep local toggle for UI
   
   @override
   void initState() {
     super.initState();
+    _displayName = widget.peerName;
+    _resolveName();
     _setupListeners();
+  }
+
+  Future<void> _resolveName() async {
+    if (widget.peerId != null) {
+       final name = await ContactService().resolveContactName(widget.peerId!);
+       if (mounted && name != 'Unknown') {
+          setState(() {
+             _displayName = name;
+          });
+       }
+    }
   }
   
   void _setupListeners() {
@@ -63,7 +79,17 @@ class _CallScreenState extends State<CallScreen> {
        if (status == "On Call") _startTimer();
        if (status == "Ended" || status == "Rejected") {
           Future.delayed(const Duration(seconds: 1), () { 
-             if(mounted) Navigator.pop(context); 
+             if (mounted) {
+               if (Navigator.canPop(context)) {
+                 Navigator.pop(context);
+               } else {
+                 // If call screen was root (e.g. from notification), go to home
+                 // Note: Usually MobileChatLayout/ResponsiveLayout is our home.
+                 // Navigating back to main is better than leaving an empty screen.
+                 // However, WhatsApp usually just closes the activity. 
+                 // In Flutter, we can push home if we are stuck.
+               }
+             }
           });
        }
     };
@@ -136,10 +162,10 @@ class _CallScreenState extends State<CallScreen> {
                  children: [
                     CircleAvatar(
                       radius: 60,
-                      backgroundImage: NetworkImage(widget.peerAvatar.isNotEmpty && widget.peerAvatar.startsWith('http') ? widget.peerAvatar : 'https://ui-avatars.com/api/?name=${widget.peerName}'),
+                      backgroundImage: NetworkImage(widget.peerAvatar.isNotEmpty && widget.peerAvatar.startsWith('http') ? widget.peerAvatar : 'https://ui-avatars.com/api/?name=$_displayName'),
                     ),
                     const SizedBox(height: 20),
-                    Text(widget.peerName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                    Text(_displayName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     // Timer / Status
                     ValueListenableBuilder<String>(
@@ -166,7 +192,7 @@ class _CallScreenState extends State<CallScreen> {
                top: 50, left: 0, right: 0,
                child: Column(
                  children: [
-                    Text(widget.peerName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 5, color: Colors.black)])),
+                    Text(_displayName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 5, color: Colors.black)])),
                     const SizedBox(height: 5),
                     ValueListenableBuilder<String>(
                       valueListenable: _status,
@@ -219,7 +245,9 @@ class _CallScreenState extends State<CallScreen> {
                    IconButton(
                      onPressed: () {
                         _webrtcService.endCall();
-                        if (mounted) Navigator.pop(context);
+                        if (mounted && Navigator.canPop(context)) {
+                           Navigator.pop(context);
+                        }
                      },
                      icon: const Icon(Icons.call_end, color: Colors.white, size: 30),
                      style: IconButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(15)),

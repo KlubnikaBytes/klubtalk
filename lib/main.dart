@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/auth_wrapper.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:whatsapp_clone/utils/web_utils.dart'; // Helper for web
 import 'package:whatsapp_clone/services/socket_service.dart';
@@ -11,6 +12,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Hive for local caching
+  await Hive.initFlutter();
   
   try {
     await dotenv.load(fileName: ".env");

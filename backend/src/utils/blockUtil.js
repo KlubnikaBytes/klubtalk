@@ -42,12 +42,38 @@ exports.isBlocked = async (userIdA, userIdB) => {
  * @param {string} action 'block' or 'unblock'
  */
 exports.modifyBlock = async (blockerId, blockedId, action) => {
+    const mongoose = require('mongoose');
+
+    // CRITICAL VALIDATION: Prevent empty strings and invalid IDs
+    if (!blockerId || !blockedId) {
+        throw new Error('Both blockerId and blockedId are required');
+    }
+
+    if (blockerId.toString().trim() === '' || blockedId.toString().trim() === '') {
+        throw new Error('User IDs cannot be empty strings');
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(blockerId)) {
+        throw new Error(`Invalid blockerId: ${blockerId}`);
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(blockedId)) {
+        throw new Error(`Invalid blockedId: ${blockedId}`);
+    }
+
+    // Prevent self-blocking
+    if (blockerId.toString() === blockedId.toString()) {
+        throw new Error('Cannot block yourself');
+    }
+
     if (action === 'block') {
+        console.log(`🚫 Blocking: ${blockerId} blocks ${blockedId}`);
         // Add to blocker's blockedUsers
         await User.findByIdAndUpdate(blockerId, { $addToSet: { blockedUsers: blockedId } });
         // Add to blocked's blockedByUsers
         await User.findByIdAndUpdate(blockedId, { $addToSet: { blockedByUsers: blockerId } });
     } else if (action === 'unblock') {
+        console.log(`✅ Unblocking: ${blockerId} unblocks ${blockedId}`);
         // Remove
         await User.findByIdAndUpdate(blockerId, { $pull: { blockedUsers: blockedId } });
         await User.findByIdAndUpdate(blockedId, { $pull: { blockedByUsers: blockerId } });
