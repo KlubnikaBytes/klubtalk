@@ -9,9 +9,70 @@ import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:whatsapp_clone/services/fcm_service.dart';
+import 'package:whatsapp_clone/services/notification_service.dart';
+import 'package:whatsapp_clone/services/app_lifecycle_handler.dart';
+import 'package:http/http.dart' as http;
+import 'package:whatsapp_clone/config/api_config.dart';
+import 'package:whatsapp_clone/utils/route_observer.dart';
+
+// Background message handler - must be top-level function
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('Background message received: ${message.data}');
+
+  // Update: Initialize Local Notifications for Background Isolation
+  await NotificationService.initialize();
+  
+  // 🎯 HTTP ACK for Delivery (Offline/Background)
+  // Ensure we tell the server we got it!
+  if (message.data['messageId'] != null) {
+     try {
+       // We need to initialize Hive to get the token
+       await Hive.initFlutter();
+       var box = await Hive.openBox('user');
+       final token = box.get('token');
+       
+       if (token != null) {
+          final messageId = message.data['messageId'];
+          // Use direct HTTP call to ACK
+          // We have to hardcode or import ApiConfig. Since it's a static string usually, imports work.
+          // But imports in isolate can be tricky if they depend on Flutter context. ApiConfig is pure Dart.
+          
+          // Assuming ApiConfig is imported or we construct URL manually to be safe or use imported one.
+          // Let's rely on imports working (standard in Flutter).
+          final url = Uri.parse('${ApiConfig.baseUrl}/api/messages/$messageId/ack');
+          
+          // Need http package. We should add import 'package:http/http.dart' as http;
+          final response = await http.post(
+             url,
+             headers: {'Authorization': 'Bearer $token'}
+          );
+          print("Background ACK sent for $messageId: ${response.statusCode}");
+       }
+     } catch (e) {
+       print("Background ACK Error: $e");
+     }
+  }
+
+  await NotificationService.handleRemoteMessage(message);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  
+  // Register background handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  // Initialize Notification Service
+  await NotificationService.initialize();
+  
+  // Initialize FCM Service
+  await FcmService().initialize();
   
   // Initialize Hive for local caching
   await Hive.initFlutter();
@@ -42,10 +103,19 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final AppLifecycleHandler _lifecycleHandler = AppLifecycleHandler();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(_lifecycleHandler);
     _initSocket();
+  }
+  
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleHandler);
+    super.dispose();
   }
 
   void _initSocket() {
@@ -91,16 +161,15 @@ class _MyAppState extends State<MyApp> {
     }
   }
   
-  @override
-  void dispose() {
-    SocketService().disconnect();
-    super.dispose();
-  }
+
+
+
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      navigatorObservers: [routeObserver],
       scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: 'Messaging App',

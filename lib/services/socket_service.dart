@@ -30,6 +30,10 @@ class SocketService {
   final _statusController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get statusStream => _statusController.stream;
 
+  // Connection State Stream
+  final _connectionStateController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStateStream => _connectionStateController.stream;
+
   bool get isConnected => _isConnected;
   IO.Socket? get socket => _socket;
 
@@ -48,7 +52,11 @@ class SocketService {
 
     // Singleton check: If socket exists, check status
     if (_socket != null) {
-       if (_socket!.connected) return;
+       if (_socket!.connected) {
+          // Already connected, emit true just in case listeners engaged late
+          _connectionStateController.add(true); 
+          return;
+       }
        // If disconnected, try reconnecting existing instance first or checking if we need new auth
        _socket!.connect();
        return;
@@ -65,6 +73,7 @@ class SocketService {
     _socket!.onConnect((_) {
       print('Socket Connected: ${_socket?.id}');
       _isConnected = true;
+      _connectionStateController.add(true);
       final userId = AuthService().currentUserId;
       if (userId != null) {
         _socket!.emit('join-user', userId);
@@ -74,11 +83,13 @@ class SocketService {
     _socket!.onDisconnect((_) {
       print('Socket Disconnected');
       _isConnected = false;
+      _connectionStateController.add(false);
     });
 
     _socket!.onConnectError((data) {
        print('❌ Socket Connection Error: $data');
        _isConnected = false;
+       _connectionStateController.add(false);
     });
 
     _socket!.onError((data) {
@@ -87,7 +98,18 @@ class SocketService {
 
     // --- Message Events ---
     _socket!.on('new_message', (data) {
-      _messageController.add(Map<String, dynamic>.from(data));
+      final msg = Map<String, dynamic>.from(data);
+      _messageController.add(msg);
+      
+      // 🎯 Auto-ACK Delivery (Global)
+      // Rule: If we receive it via socket, we are "delivered".
+      if (msg['_id'] != null && msg['chatId'] != null) {
+          // print("SocketService: Auto-ACK delivery for msg ${msg['_id']}");
+          _socket!.emit('message_received', {
+             'messageId': msg['_id'],
+             'chatId': msg['chatId']
+          });
+      }
     });
 
     _socket!.on('message_sent', (data) {

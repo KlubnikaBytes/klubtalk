@@ -23,6 +23,8 @@ import 'package:whatsapp_clone/screens/status/text_status_screen.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
 import 'package:whatsapp_clone/screens/call/call_logs_screen.dart';
 import 'package:whatsapp_clone/widgets/navigation_panel.dart';
+import 'package:whatsapp_clone/screens/communities/my_communities_screen.dart';
+import 'package:whatsapp_clone/screens/communities/create_community_screen.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -40,7 +42,7 @@ class MobileChatLayout extends StatefulWidget {
 
 class _MobileChatLayoutState extends State<MobileChatLayout> {
   // Navigation State
-  int _selectedNavIndex = 0; // 0: Chats, 1: Updates, 2: Calls, 3: Profile
+  int _selectedNavIndex = 0; // 0: Chats, 1: Updates, 2: Calls, 3: Communities, 4: Profile
   bool _isPanelOpen = false;
   
   // Search State
@@ -249,8 +251,6 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
                     _buildFilterChip('Favourites', 'favorites'),
                     const SizedBox(width: 8),
                     _buildFilterChip('Groups', 'groups'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Communities', 'communities'),
                   ],
                 ),
               ),
@@ -272,8 +272,11 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
       
       case 2: // Calls
         return const CallLogsScreen();
+
+      case 3: // Communities
+        return const MyCommunitiesScreen(); // Need import
       
-      case 3: // Profile
+      case 4: // Profile
         return const SettingsScreen();
       
       default:
@@ -295,7 +298,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
       );
     }
     
-    // Tab 1: Updates -> Camera (Standard WhatsApp)
+    // Tab 1: Updates -> Camera
     if (index == 1) {
        return Column(
          mainAxisSize: MainAxisSize.min,
@@ -319,7 +322,6 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
               backgroundColor: const Color(0xFFC92136), 
               child: const Icon(Icons.camera_alt, color: Colors.white),
               onPressed: () {
-                 // Fix: Route to StatusCameraScreen
                  Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraStatusScreen()));
               },
             ),
@@ -333,9 +335,21 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
           backgroundColor: const Color(0xFFC92136),
           child: const Icon(Icons.add_call, color: Colors.white),
           onPressed: () {
-             // Re-use NewChatScreen as contact picker for calls
              Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen(isCallSelection: true)));
           },
+       );
+    }
+
+    // Tab 3: Communities -> New Community (Optional, or rely on screen button)
+    if (index == 3) {
+       return FloatingActionButton(
+         backgroundColor: const Color(0xFFC92136),
+         child: const Icon(Icons.group_add, color: Colors.white),
+         onPressed: () {
+           Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateCommunityScreen())).then((_) {
+              // Refresh logic if needed, but MyCommunitiesScreen handles its own data fetch on init/nav
+           });
+         },
        );
     }
 
@@ -349,7 +363,8 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
         case 0: return 'Chats';
         case 1: return 'Updates';
         case 2: return 'Calls';
-        case 3: return 'Profile';
+        case 3: return 'Communities';
+        case 4: return 'Profile';
         default: return 'Messaging App';
       }
     }
@@ -373,7 +388,7 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
             } else if (value == 'New group') {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen()));
             } else if (value == 'New community') {
-               Navigator.push(context, MaterialPageRoute(builder: (context) => const GroupParticipantSelectScreen(isCommunity: true)));
+               Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateCommunityScreen()));
             } else if (value == 'Archived') {
               Navigator.push(
                 context, 
@@ -526,6 +541,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
           );
        }
     });
+
+    // --- CONNECTION STATUS LISTENER (Sync on Resume) ---
+    SocketService().connectionStateStream.listen((isConnected) {
+        if (isConnected && mounted) {
+            print("ChatListScreen: Socket reconnected. Refreshing chats...");
+            _loadChats(updateLoading: false);
+        }
+    });
   }
 
   void _handleNewMessageSocket(Map<String, dynamic> messageData) {
@@ -539,8 +562,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 var chat = _chats.removeAt(existingIndex);
                 chat['lastMessage'] = messageData; // Update content
                 chat['lastMessageTime'] = messageData['createdAt'] ?? DateTime.now().toIso8601String();
-                // TODO: Update unread count if not in this chat
-                // For simplified "WhatsApp Clone" sync:
+                
+                // Increment Unread Count (Socket doesn't send full chat, so we do it locally)
+                // Only if WE are not the sender
+                if (messageData['senderId'] != AuthService().currentUserId) {
+                   int current = (chat['unreadCount'] as num?)?.toInt() ?? 0;
+                   chat['unreadCount'] = current + 1;
+                }
+                
                 _chats.insert(0, chat); // Move to top
              });
           }
@@ -779,7 +808,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 }
             }
             
-            var unreadCount = (chatData['unreadCountSelf'] as num?)?.toInt() ?? 0;
+            // Unread Count (Backend + Local override check)
+            var unreadCount = (chatData['unreadCount'] as num?)?.toInt() ?? 0;
+            // Note: _store.isMarkedUnread is a manual override "Mark as unread". 
+            // If backend says 0 but user marked unread, show 1.
             if (_store.isMarkedUnread(chatId)) unreadCount = unreadCount > 0 ? unreadCount : 1;
             
             // Determine Archive State for Menu
@@ -788,7 +820,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             final isGroup = chatData['isGroup'] == true;
             
             // Name/Avatar Logic
-            String name = '', avatarUrl = '', lastMsgText = '';
+            String name = '', avatarUrl = '';
             if (isGroup) {
                  name = chatData['groupName'] ?? 'Group';
                  avatarUrl = chatData['groupAvatar'] ?? chatData['groupPhoto'] ?? '';
@@ -799,9 +831,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     (u) => (u['_id'] == peerId || u['firebaseUid'] == peerId), 
                     orElse: () => {}
                  );
-                 // STRICT NAME LOGIC: Do not use peerData['name']
-                 // We will resolve via FutureBuilder below using peerData['phone']
-                 name = ''; // Placeholder, resolved in FutureBuilder
                  avatarUrl = peerData['avatar'] ?? '';
             }
 
@@ -814,29 +843,72 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     orElse: () => {}
                  );
                  final phone = peerData['phone'] ?? '';
-                 if (phone.isEmpty) return 'Unknown';
+                 // If we have local name cache in peerData? 
+                 // Actually peerData has 'name' from backend populate. 
+                 // But user wants "Contacts" name.
+                 if (phone.isEmpty) return peerData['name'] ?? 'Unknown';
                  
                  // Use ContactService strict resolver
                  return await ContactService().getContactNameFromPhone(phone);
             }
 
+            // Last Message Formatting
+            String lastMsgText = '';
             if (chatData['lastMessage'] is Map) {
                 final lm = chatData['lastMessage'];
-                lastMsgText = lm['text'] ?? '';
-                if (lastMsgText.isEmpty) {
-                     if (lm['type'] == 'image') lastMsgText = '📷 Photo';
-                     if (lm['type'] == 'voice') lastMsgText = '🎙️ Voice message';
+                final content = lm['content'] ?? '';
+                final type = lm['type'] ?? 'text';
+                
+                String preview = content;
+                if (type == 'image') preview = '📷 Photo';
+                if (type == 'video') preview = '🎥 Video';
+                if (type == 'audio' || type == 'voice') preview = '🎙️ Voice message';
+                
+                // Add Sender Name Prefix
+                String senderPrefix = '';
+                final senderId = lm['senderId'];
+                if (senderId == currentUid) {
+                    senderPrefix = 'You: ';
+                } else if (isGroup) {
+                    // Try to finding sender name in participants
+                    // This is rough because we only have 'name' and 'phone' in participantsDetails
+                    // We can try to resolve it? Or just use First Name.
+                    // For now, let's keep it simple or user might complain "Who sent this?"
+                    // Let's rely on standard UI (Name: Message)
+                    // We need to resolve senderId to Name.
+                    final senderData = participantsDetails.firstWhere(
+                        (u) => (u['_id'] == senderId || u['firebaseUid'] == senderId),
+                        orElse: () => {}
+                    );
+                    if (senderData.isNotEmpty) {
+                       senderPrefix = "${senderData['name']?.split(' ').first ?? 'User'}: ";
+                    } else {
+                       senderPrefix = "User: ";
+                    }
                 }
-            } else if (chatData['lastMessage'] is String) lastMsgText = chatData['lastMessage'];
+                
+                lastMsgText = "$senderPrefix$preview";
+
+            } else if (chatData['lastMessage'] is String) {
+                lastMsgText = chatData['lastMessage'];
+            }
             
             // Time
             String timeStr = '';
             if (chatData['lastMessageTime'] != null) {
-                try { timeStr = DateFormat('h:mm a').format(DateTime.parse(chatData['lastMessageTime']).toLocal()); } catch (_) {}
+                try { 
+                    final date = DateTime.parse(chatData['lastMessageTime']).toLocal();
+                    final now = DateTime.now();
+                    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+                        timeStr = DateFormat('h:mm a').format(date);
+                    } else if (now.difference(date).inDays < 2) {
+                        timeStr = 'Yesterday';
+                    } else {
+                        timeStr = DateFormat('dd/MM/yy').format(date);
+                    }
+                } catch (_) {}
             }
 
-            // ... (Inside ListView.builder) ...
-            
             return FutureBuilder<String>(
                future: resolveName(),
                builder: (context, snapshot) {
@@ -854,20 +926,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
                        }
                    },
                    child: ListTile(
-                       // ... (Keep existing ListTile details: leading, title, subtitle, trailing, onTap)
                        leading: AvatarWidget(imageUrl: finalAvatarUrl, radius: 25),
                        title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
                        subtitle: Row(
                           children: [
                             if (isMuted) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.volume_off, size: 14, color: Colors.grey)),
-                            Expanded(child: Text(lastMsgText, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Expanded(
+                                child: Text(
+                                    lastMsgText, 
+                                    maxLines: 1, 
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: unreadCount > 0 ? Colors.black87 : Colors.grey,
+                                        fontWeight: unreadCount > 0 ? FontWeight.w600 : FontWeight.normal
+                                    )
+                                )
+                            ),
                           ],
                        ),
                        trailing: Column(
                          mainAxisAlignment: MainAxisAlignment.center,
                          crossAxisAlignment: CrossAxisAlignment.end,
                          children: [
-                           Text(timeStr, style: TextStyle(fontSize: 12, color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey)),
+                           Text(timeStr, style: TextStyle(
+                               fontSize: 12, 
+                               color: unreadCount > 0 ? const Color(0xFF25D366) : Colors.grey,
+                               fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal
+                           )),
                            const SizedBox(height: 4),
                            Row(
                              mainAxisSize: MainAxisSize.min,
@@ -886,7 +971,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                          ],
                        ),
                        onTap: () {
-                          if (unreadCount > 0) _store.markRead(chatId);
+                          // Mark read locally optimistic
+                          if (unreadCount > 0 && mounted) {
+                              setState(() {
+                                  chatData['unreadCount'] = 0;
+                                  _store.markRead(chatId);
+                              });
+                          }
+                          
                           final contact = Contact(name: displayName, profileImage: finalAvatarUrl, isOnline: true);
                           final peerId = !isGroup ? participants.firstWhere((id) => id != currentUid, orElse: () => '') : '';
                           _navigateToChat(context, contact, peerId, chatId, isGroup: isGroup);

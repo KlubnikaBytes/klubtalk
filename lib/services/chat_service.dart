@@ -48,16 +48,11 @@ class ChatService {
   // Send Text Message
   Future<Map<String, dynamic>?> sendMessage(String chatId, String text, {String type = 'text', String? tempId}) async {
     // Determine if we should use Socket or REST
-    // For text, Socket is preferred for speed.
-    if (SocketService().isConnected) {
-       SocketService().sendMessage(chatId, text, type, tempId: tempId);
-       // Note: We won't get a full Message object back immediately until the ack or 'new_message' event.
-       // The UI should handle optimistic updates.
-       return null; 
-    } else {
-       // Fallback to REST if socket disconnected
-       return await _sendMessageToBackend(chatId, text, type);
-    }
+    // For reliable Unread Count updates (handled by Backend), we MUST use the REST API.
+    // The Backend will handle Socket emission to recipients.
+    // Optimistic updates should be handled by the UI layer (ChatScreen) separately.
+    
+    return await _sendMessageToBackend(chatId, text, type, tempId: tempId);
   }
 
   // Send Sticker Message
@@ -235,8 +230,11 @@ class ChatService {
   // Get Messages for a Chat (with cache-first pattern)
   Future<List<Map<String, dynamic>>> getMessages(String chatId) async {
     try {
+      print('📥 (Debug) getMessages: Fetching for $chatId');
+      
       // 1️⃣ Load instantly from cache
       final cachedMessages = await _cache.getCachedMessages(chatId);
+      print('💾 (Debug) Cache has ${cachedMessages.length} messages');
       
       // 2️⃣ Fetch from server in background
       final response = await http.get(
@@ -244,8 +242,12 @@ class ChatService {
         headers: await _getHeaders(),
       );
 
+      print('🌐 (Debug) Network Response: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
+        print('✅ (Debug) Network returned ${data.length} messages');
+        
         final messages = data.map((m) {
            final map = Map<String, dynamic>.from(m);
            // Fix: Map createdAt to timestamp
@@ -260,11 +262,12 @@ class ChatService {
         
         return messages;
       } else {
+        print('❌ (Debug) API Failed, returning cache. Body: ${response.body}');
         // If API fails, return cached data
         return List<Map<String, dynamic>>.from(cachedMessages);
       }
     } catch (e) {
-      print('Error fetching messages: $e');
+      print('❌ (Debug) Error fetching messages: $e');
       // Return cached data on error
       try {
         final cachedMessages = await _cache.getCachedMessages(chatId);
@@ -273,6 +276,46 @@ class ChatService {
         return [];
       }
     }
+  }
+
+  // ⚡ New: Get Cached Messages Only (Instant)
+  Future<List<Map<String, dynamic>>> getCachedMessagesOnly(String chatId) async {
+      try {
+         final cached = await _cache.getCachedMessages(chatId);
+         return List<Map<String, dynamic>>.from(cached);
+      } catch (e) {
+         print("Cache Load Error: $e");
+         return [];
+      }
+  }
+
+  // ⚡ New: Fetch Remote Messages Only (updates cache)
+  Future<List<Map<String, dynamic>>> fetchRemoteMessages(String chatId) async {
+      try {
+        final response = await http.get(
+          Uri.parse('${ApiConfig.messagesEndpoint}/$chatId'),
+          headers: await _getHeaders(),
+        );
+
+        if (response.statusCode == 200) {
+          final List<dynamic> data = jsonDecode(response.body);
+          final messages = data.map((m) {
+             final map = Map<String, dynamic>.from(m);
+             if (map['timestamp'] == null && map['createdAt'] != null) {
+                map['timestamp'] = map['createdAt'];
+             }
+             return map;
+          }).toList();
+          
+          await _cache.cacheMessages(chatId, messages);
+          return messages;
+        } else {
+           throw Exception('Failed to load messages: ${response.statusCode}');
+        }
+      } catch (e) {
+         print("Remote Fetch Error: $e");
+         rethrow;
+      }
   }
 
   // Create Group Chat

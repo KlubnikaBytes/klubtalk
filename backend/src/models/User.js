@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
     lastSeen: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
+    fcmToken: { type: String, default: '' }, // Firebase Cloud Messaging token for push notifications
     blockedUsers: [String], // Array of firebaseUids
     archivedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Archive
     mutedStatusAuthors: [{ type: String }], // Array of firebaseUids of users whose status is muted

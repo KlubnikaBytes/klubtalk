@@ -149,6 +149,11 @@ exports.updateProfile = async (req, res) => {
         // Automatically update lastSeen if online status changes? 
         // Or client sends it. Let's allow specific internal updates if needed, but for now strict whitelist.
 
+        const updatedUser = await User.findByIdAndUpdate(req.uid, updates, { new: true }).select('-password');
+
+        if (!updatedUser) return res.status(404).json({ message: 'User not found' });
+
+        res.json(updatedUser);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -171,3 +176,23 @@ exports.getUserById = async (req, res) => {
         res.status(500).json({ message: e.message });
     }
 };
+
+// Update FCM Token for Push Notifications
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+
+        if (!fcmToken) {
+            return res.status(400).json({ message: 'FCM token is required' });
+        }
+
+        await User.findByIdAndUpdate(req.uid, { fcmToken });
+        console.log(`FCM token updated for user ${req.uid}`);
+
+        res.json({ success: true, message: 'FCM token updated' });
+    } catch (error) {
+        console.error('Update FCM token error:', error);
+        res.status(500).json({ message: 'Failed to update FCM token' });
+    }
+};
+

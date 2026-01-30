@@ -17,6 +17,7 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+    apply(from = rootProject.file("namespace-fix.gradle"))
 }
 
 tasks.register<Delete>("clean") {

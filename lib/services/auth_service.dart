@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
+import 'package:whatsapp_clone/services/fcm_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -44,9 +45,12 @@ class AuthService {
       final data = jsonDecode(response.body);
       _token = data['token'];
       _currentUser = data['user'];
-      _currentUser = data['user'];
       await storage.write(key: 'jwt_token', value: _token);
       SocketService().connect(); // Connect to socket
+      
+      // Send FCM token to backend
+      FcmService().sendTokenToBackend();
+      
       return data;
     } else {
       throw Exception(jsonDecode(response.body)['message'] ?? 'Invalid OTP');
@@ -70,8 +74,11 @@ class AuthService {
 
       if (response.statusCode == 200) {
         _currentUser = jsonDecode(response.body);
-        _currentUser = jsonDecode(response.body);
         SocketService().connect(); // Connect to socket
+        
+        // Send FCM token to backend
+        FcmService().sendTokenToBackend();
+        
         return true;
       }
     } catch (e) {

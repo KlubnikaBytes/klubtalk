@@ -1,0 +1,21 @@
+def configureNamespace = { project ->
+    if (project.hasProperty("android")) {
+        project.android {
+            if (namespace == null) {
+                def packageName = project.group
+                if (!packageName || packageName == "com.example") {
+                    packageName = "com.example.${project.name.replaceAll('-', '_')}"
+                }
+                namespace packageName
+            }
+        }
+    }
+}
+
+if (project.state.executed) {
+    configureNamespace(project)
+} else {
+    afterEvaluate {
+        configureNamespace(project)
+    }
+}

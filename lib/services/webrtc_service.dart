@@ -4,6 +4,7 @@ import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:whatsapp_clone/config/api_config.dart';
+import 'package:flutter/services.dart'; // For MethodChannel
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef CallStateCallback = void Function(String status);
@@ -68,7 +69,7 @@ class WebrtcService {
   bool _isCaller = false;
   String? _remoteUserId; // Peer ID (Connection ID or Peer ID)
 
-  // Track Global Call State to prevent duplicate screens
+  // Track Global Call State
   bool _isCallActive = false; 
   bool get isCallActive => _isCallActive;
   bool _logSaved = false;
@@ -167,6 +168,14 @@ class WebrtcService {
       });
       
       onCallStateChange?.call("Calling...");
+      
+      // 🎵 Play Outgoing Ringtone (Native)
+      try {
+        const platform = MethodChannel('com.example.whatsapp_clone/ringtone');
+        await platform.invokeMethod('playOutgoing');
+      } catch (e) {
+        print("Ringtone Error: $e");
+      }
     } catch (e) {
       print("Init Call Error: $e");
       endCall();
@@ -267,6 +276,7 @@ class WebrtcService {
          );
          onCallStateChange?.call("On Call");
          _callStartTime = DateTime.now();
+         const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop'); // 🛑 Stop Ringtone
       }
   }
   
@@ -336,6 +346,7 @@ class WebrtcService {
      if (!retainState) {
         _isCallActive = false;
         onCallStateChange?.call("Ended");
+        const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop');
      }
 
      // Save Log

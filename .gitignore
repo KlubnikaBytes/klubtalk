@@ -63,3 +63,4 @@ web/splash/   # Splash screen artifacts
 # Firebase
 firebase_options.dart
 backend/service-account-key.json
+backend/src/config/firebase-admin.json

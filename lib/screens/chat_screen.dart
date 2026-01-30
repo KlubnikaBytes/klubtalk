@@ -30,6 +30,7 @@ import 'package:whatsapp_clone/models/sticker_model.dart';
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
 import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 import 'package:whatsapp_clone/screens/contact_info_screen.dart';
+import 'package:whatsapp_clone/utils/route_observer.dart';
 import 'package:whatsapp_clone/main.dart' show scaffoldMessengerKey;
 
 class ChatScreen extends StatefulWidget {
@@ -54,7 +55,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, RouteAware {
   final TextEditingController _messageController = TextEditingController();
   final ChatService _chatService = ChatService();
   final ScrollController _scrollController = ScrollController();
@@ -69,6 +70,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isEmojiPickerVisible = false;
   bool _isStickerPickerVisible = false;
   Set<String> _blockedUserIds = {};
+  
+  // Visibility State
+  bool _isScreenVisible = true;
+  bool _isAppResumed = true;
   
   // Socket Subscriptions
   StreamSubscription? _messageSub;
@@ -105,9 +110,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadMessages();
     if (widget.isGroup) _loadGroupDetails(); // Load fresh group info
     _checkBlockStatus();
+    _checkBlockStatus();
     _setupSocketListeners(); // Listen to socket
     SocketService().joinChat(widget.chatId); // Join Chat Room
-    SocketService().markSeen(widget.chatId); // Mark chat as seen on open
+    
+    // Initial Seen Check (Only if visible, which usually implies yes in initState unless started in bg?)
+    // Actually, initState runs before build, so technically visible.
+    // We defer slightly to ensure route is ready? No, immediate is fine.
+    if (_isScreenVisible && _isAppResumed) {
+       SocketService().markSeen(widget.chatId); 
+    }
+    
+    // Register Lifecycle Observer
+    WidgetsBinding.instance.addObserver(this);
+
     if (!widget.isGroup) SocketService().checkOnline(widget.peerId); // Check initial online status
 
     _messageController.addListener(() {
@@ -131,6 +147,58 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Register Route Observer
+    try {
+       final route = ModalRoute.of(context);
+       if (route != null) {
+          routeObserver.subscribe(this, route);
+       }
+    } catch (e) {
+       print("ChatScreen: Failed to subscribe to route observer: $e");
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+     super.didChangeAppLifecycleState(state);
+     setState(() {
+         _isAppResumed = (state == AppLifecycleState.resumed);
+     });
+     
+     if (_isAppResumed) {
+         print("ChatScreen: App Resumed. Screen Visible: $_isScreenVisible");
+         if (_isScreenVisible) {
+             _markChatAsSeen();
+         }
+     }
+  }
+
+  @override
+  void didPopNext() {
+      // Returning to this screen (top route popped off)
+      print("ChatScreen: didPopNext (Returned to screen)");
+      setState(() => _isScreenVisible = true);
+      if (_isAppResumed) {
+          _markChatAsSeen();
+      }
+  }
+
+  @override
+  void didPushNext() {
+      // Pushing a new route on top
+      print("ChatScreen: didPushNext (Covered by another screen)");
+      setState(() => _isScreenVisible = false);
+  }
+  
+  void _markChatAsSeen() {
+      if (_isPeerBlocked) return;
+      print("ChatScreen: Marking chat as seen explicitly.");
+      SocketService().markSeen(widget.chatId);
   }
 
   void _setupSocketListeners() {
@@ -183,12 +251,32 @@ class _ChatScreenState extends State<ChatScreen> {
              setState(() {
                _messages.insert(0, data); // Insert at 0 (Newest/Bottom)
              });
-             _scrollToBottom();
+             
+             // Smart Scroll: Only scroll if near bottom
+             if (_scrollController.hasClients && _scrollController.offset < 300) {
+                 _scrollToBottom();
+             } else {
+                 // TODO: Show "New Message" fab/badge
+                 print("ChatScreen: New message received but user is scrolled up. Not scrolling.");
+             }
              
              // If I am receiving a message from someone else while on this screen, mark it as seen immediately.
              if (data['senderId'] != AuthService().currentUserId) {
-                print("ChatScreen: Open chat received message. Marking as seen.");
-                SocketService().markSeen(widget.chatId);
+                // VISIBILITY CHECK: Only mark seen if eyes are on screen
+                if (_isScreenVisible && _isAppResumed) {
+                    print("ChatScreen: Open chat & Visible & Resumed. Instant Blue Tick.");
+                    // 1. Emit specific seen event for this message (Rule 2)
+                    if (data['_id'] != null) {
+                        SocketService().socket?.emit('message_seen', {
+                          'chatId': widget.chatId,
+                          'messageId': data['_id'] // ACK specific message
+                        });
+                    }
+                    // 2. Fallback to chat-level seen to cover bases
+                    SocketService().markSeen(widget.chatId);
+                } else {
+                    print("ChatScreen: Message received but screen HIDDEN/BACKGROUND. NOT marking seen.");
+                }
              }
           }
        }
@@ -249,6 +337,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void _updateMessageStatus({String? messageId, String? tempId, required String status}) {
       if (!mounted) return;
       
+      print("ChatScreen: Received status update '$status' for msgId: $messageId, tempId: $tempId");
+
       setState(() {
          int index = -1;
          
@@ -263,15 +353,18 @@ class _ChatScreenState extends State<ChatScreen> {
          }
          
          if (index != -1) {
-            print("ChatScreen: Updating status of message $index to $status");
+            print("ChatScreen: FOUND message at index $index. Current status: ${_messages[index]['status']}");
+            // Optimization: Only update if status is 'better' (sent -> delivered -> seen)
+            // But for now, trust the server event.
             _messages[index]['status'] = status;
             
             // If we have a real ID now (e.g. from delivery event), ensure we update our local ID if it was temp
             if (messageId != null && _messages[index]['_id'] != messageId) {
+               print("ChatScreen: Upgrading local temp ID ${_messages[index]['_id']} to real ID $messageId");
                _messages[index]['_id'] = messageId;
             }
          } else {
-            print("ChatScreen: Warning - Message not found for status update (ID: $messageId, Temp: $tempId)");
+            print("ChatScreen: Warning - Message NOT FOUND for status update (ID: $messageId, Temp: $tempId). Total msgs: ${_messages.length}");
          }
       });
   }
@@ -279,6 +372,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    routeObserver.unsubscribe(this);
+
     SocketService().leaveChat(widget.chatId); // Leave Chat Room
     _messageSub?.cancel();
     _typingSub?.cancel();
@@ -1239,13 +1335,7 @@ Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(cont
             IconButton(
               icon: const Icon(Icons.videocam), 
               onPressed: () {
-                if (!_isPeerOnline) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     SnackBar(content: Text("${widget.contact?.name ?? 'User'} is unavailable"))
-                   );
-                   return;
-                }
-                
+                // Removed Online Check to allow persistent calls (Push Notifications will wake them up)
                 Navigator.push(
                   context, 
                   MaterialPageRoute(
@@ -1262,12 +1352,7 @@ Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(cont
             IconButton(
               icon: const Icon(Icons.call), 
               onPressed: () {
-                if (!_isPeerOnline) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     SnackBar(content: Text("${widget.contact?.name ?? 'User'} is unavailable"))
-                   );
-                   return;
-                }
+                // Removed Online Check
                 
                 Navigator.push(
                   context, 

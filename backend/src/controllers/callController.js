@@ -82,3 +82,15 @@ exports.getCallHistory = async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch call history' });
     }
 };
+
+exports.getCallById = async (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = await Call.findById(callId).populate('from', 'name avatar phone').populate('to', 'name avatar phone');
+        if (!call) return res.status(404).json({ error: 'Call not found' });
+        res.json(call);
+    } catch (error) {
+        console.error('Error fetching call:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};

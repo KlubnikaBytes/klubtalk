@@ -13,6 +13,13 @@ const chatSchema = new mongoose.Schema({
     groupAdmins: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Multiple admins
     groupDescription: { type: String, default: '' },
 
+    // Unread Counts: Map of UserId -> Count
+    unreadCounts: {
+        type: Map,
+        of: Number,
+        default: {}
+    },
+
     // Permission Controls
     editInfoPermission: {
         type: String,

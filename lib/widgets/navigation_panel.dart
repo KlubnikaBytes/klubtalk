@@ -187,9 +187,14 @@ class NavigationPanel extends StatelessWidget {
         index: 2,
       ),
       _NavMenuItem(
+        icon: Icons.groups_outlined,
+        label: 'Communities',
+        index: 3,
+      ),
+      _NavMenuItem(
         icon: Icons.person_outline,
         label: 'Profile',
-        index: 3,
+        index: 4,
       ),
     ];
 

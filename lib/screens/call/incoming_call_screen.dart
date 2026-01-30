@@ -3,6 +3,7 @@ import 'package:whatsapp_clone/screens/call/call_screen.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
+import 'package:whatsapp_clone/services/notification_service.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   final String callerName;
@@ -108,8 +109,11 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                    Column(
                      children: [
                          GestureDetector(
-                          onTap: () {
+                          onTap: () async {
                              if (_isAccepting) return;
+                             // Stop Ringtone
+                             await NotificationService.cancelCallNotification();
+                             
                              WebrtcService().rejectCall(widget.callData['from']);
                              if (mounted && Navigator.canPop(context)) {
                                 Navigator.pop(context);
@@ -126,12 +130,15 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                       ],
                     ),
                     
-                    // Accept (Green)
+                      // Accept (Green)
                     Column(
                       children: [
-                         GestureDetector(
+                          GestureDetector(
                           onTap: () async {
                              if (_isAccepting) return;
+                             // Stop Ringtone Immediately
+                             await NotificationService.cancelCallNotification();
+                             
                              setState(() => _isAccepting = true); // Lock
 
                              try {

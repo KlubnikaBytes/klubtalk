@@ -30,6 +30,8 @@ exports.init = (server) => {
         }
     });
 
+    const activeCalls = new Map(); // ReceiverID -> { from, callType, offer, timestamp }
+
     io.on('connection', async (socket) => {
         console.log(`User connected: ${socket.uid}`);
         onlineUsers.set(socket.uid, socket.id);
@@ -40,6 +42,23 @@ exports.init = (server) => {
         // Set User Online
         await User.findByIdAndUpdate(socket.uid, { isOnline: true, lastSeen: null });
         socket.broadcast.emit('user_status', { userId: socket.uid, isOnline: true });
+
+        // --- CHECK PENDING CALLS ---
+        if (activeCalls.has(socket.uid)) {
+            const callData = activeCalls.get(socket.uid);
+            // Check if call is stale (e.g. > 60 seconds)
+            const diff = (new Date() - callData.timestamp) / 1000;
+            if (diff < 60) {
+                console.log(`Re-emitting pending call to ${socket.uid} from ${callData.from}`);
+                socket.emit("video_call_request", {
+                    from: callData.from,
+                    callType: callData.callType,
+                    offer: callData.offer
+                });
+            } else {
+                activeCalls.delete(socket.uid);
+            }
+        }
 
         // --- Offline Delivery Logic ---
         // Find messages sent to this user that are still 'sent'
@@ -132,12 +151,69 @@ exports.init = (server) => {
                 // Ack back to sender (confirm 'sent' status / update tempId)
                 socket.emit('message_sent', { tempId: tempId, message });
 
-                // --- Delivery Status Update (Server-side Hack for "Instant" delivery if online) ---
-                // Ideally client sends ACK, but we do this for simplicity as per previous logic.
-                await exports.notifyDelivery(io, message, chatId, tempId);
+                // --- Delivery Status Update (REMOVED: Relying on Client ACK) ---
+                // await exports.notifyDelivery(io, message, chatId, tempId);
+
+                // --- Push Notification for Recipients (Data-Only FCM) ---
+                try {
+                    const { sendMessageNotification } = require('./utils/notification_helper');
+
+                    // Get all participants except sender
+                    const recipients = chat.participants.filter(p => p.toString() !== socket.uid);
+
+                    for (const recipientId of recipients) {
+                        // Get sender info
+                        const sender = await User.findById(socket.uid).select('name');
+                        const senderName = sender?.name || 'Someone';
+
+                        // Send instant notification via data-only FCM
+                        await sendMessageNotification(
+                            recipientId.toString(),
+                            senderName,
+                            content || 'Media',
+                            {
+                                chatId: chatId,
+                                messageId: message._id.toString(),
+                                senderId: socket.uid
+                            }
+                        );
+                    }
+                } catch (notifErr) {
+                    console.error("Push notification error in socket:", notifErr);
+                }
+
 
             } catch (e) {
                 console.error("Send Message Error", e);
+            }
+        });
+
+        // 🎯 NEW: Message Received ACK (Delivery Tick)
+        socket.on('message_received', async ({ messageId, chatId }) => {
+            console.log(`ACK: Message ${messageId} received by ${socket.uid}`);
+            try {
+                const message = await Message.findById(messageId);
+                if (!message) return;
+
+                // Only update if I am NOT the sender (I am the recipient confirming receipt)
+                if (message.senderId.toString() !== socket.uid) {
+                    // Check if already seen/delivered to avoid reverting status? 
+                    // Actually, if it's 'seen', we don't go back to 'delivered'.
+                    if (message.status !== 'seen') {
+                        await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+
+                        // Notify sender → show double tick
+                        if (onlineUsers.has(message.senderId.toString())) {
+                            io.to(message.senderId.toString()).emit('message_delivered', {
+                                messageId,
+                                chatId,
+                                userId: socket.uid
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Message Received ACK Error:", e);
             }
         });
 
@@ -192,6 +268,14 @@ exports.init = (server) => {
                 return;
             }
 
+            // Store Active Call for Re-emit on Connect
+            activeCalls.set(data.to, {
+                from: data.from,
+                callType: data.callType,
+                offer: data.offer,
+                timestamp: new Date()
+            });
+
             // Broadcast to receiver
             io.to(data.to).emit("video_call_request", {
                 from: data.from, // Caller ID
@@ -199,11 +283,48 @@ exports.init = (server) => {
                 offer: data.offer
             });
 
+            let callId = null;
+            /* 
+               COMMENTED OUT TO PREVENT GHOST LOGS
+               The Frontend (WebrtcService) handles saving the call log upon completion/missed.
+               Saving here creates a duplicate "Missed" log with no duration.
             try {
                 // Log call in DB
-                const newCall = new Call({ from: data.from, to: data.to, type: data.callType });
-                await newCall.save();
+                const newCall = new Call({
+                    from: data.from,
+                    to: data.to,
+                    type: data.callType,
+                    callTime: new Date(),
+                    offer: data.offer
+                });
+                const savedCall = await newCall.save();
+                callId = savedCall._id;
             } catch (e) { console.error("Call Log Error:", e); }
+            */
+
+            // --- Push Notification for Call (if recipient offline) ---
+            try {
+                const { sendCallNotification } = require('./utils/notification_helper');
+
+                // Check if recipient is offline (or just send always for high reliability?)
+                // High priority FCM is needed for background calls.
+                if (!onlineUsers.has(data.to)) {
+                    // Get caller info
+                    const caller = await User.findById(data.from).select('name');
+                    const callerName = caller?.name || 'Someone';
+
+                    // Send high-priority call notification
+                    await sendCallNotification(
+                        data.to,
+                        callerName,
+                        data.callType,
+                        { ...data, callId: callId || 'temp' }
+                    );
+                    console.log(`Call notification sent to offline user ${data.to}`);
+                }
+            } catch (notifErr) {
+                console.error("Call notification error:", notifErr);
+            }
         });
 
         socket.on("video_call_accept", (data) => {
@@ -212,16 +333,33 @@ exports.init = (server) => {
                 from: data.from,
                 answer: data.answer
             });
+            // Call accepted, remove from pending
+            activeCalls.delete(data.from); // 'from' here is Receiver (Me)
+            // Also delete for the other side if needed, but key is ReceiverID
+            // Here 'data.from' is the Receiver accepting.
         });
 
         socket.on("video_call_reject", (data) => {
             // data: { to: callerId }
             io.to(data.to).emit("video_call_reject", { from: socket.uid });
+
+            // Remove from pending (User rejected)
+            activeCalls.delete(socket.uid);
         });
 
         socket.on("video_call_end", (data) => {
             // data: { to: peerId }
             io.to(data.to).emit("video_call_end", { from: socket.uid });
+
+            // Clear pending
+            activeCalls.delete(socket.uid);
+            activeCalls.delete(data.to);
+
+            // Clear Notification if user is offline/background
+            try {
+                const { sendCallEndNotification } = require('./utils/notification_helper');
+                sendCallEndNotification(data.to);
+            } catch (e) { console.error("Call End Notif Error:", e); }
         });
 
         socket.on("video_call_ice", (data) => {

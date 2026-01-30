@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/screens/settings/privacy_screen.dart';
 import 'package:whatsapp_clone/screens/settings/profile_edit_screen.dart';
+import 'package:whatsapp_clone/screens/settings/notification_settings_screen.dart'; // Added
 import 'package:whatsapp_clone/services/user_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
@@ -54,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
           _buildSettingItem(context, Icons.lock, 'Privacy', 'Block contacts, disappearing messages', const PrivacyScreen()),
           _buildSettingItem(context, Icons.face, 'Avatar', 'Create, edit, profile photo', null),
           _buildSettingItem(context, Icons.chat, 'Chats', 'Theme, wallpapers, chat history', null),
-          _buildSettingItem(context, Icons.notifications, 'Notifications', 'Message, group & call tones', null),
+          _buildSettingItem(context, Icons.notifications, 'Notifications', 'Message, group & call tones', const NotificationSettingsScreen()),
           _buildSettingItem(context, Icons.sd_storage, 'Storage and data', 'Network usage, auto-download', null),
           _buildSettingItem(context, Icons.language, 'App language', 'English (device\'s language)', null),
           _buildSettingItem(context, Icons.help_outline, 'Help', 'Help center, contact us, privacy policy', null),

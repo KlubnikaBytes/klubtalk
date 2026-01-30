@@ -13,6 +13,8 @@ router.post('/auth/send-otp', authController.sendOtp);
 router.post('/auth/verify-otp', authController.verifyOtp);
 router.get('/auth/me', verifyToken, authController.getMe);
 router.put('/auth/me', verifyToken, authController.updateProfile);
+router.post('/auth/fcm-token', verifyToken, authController.updateFcmToken);
+
 
 // router.get('/auth/profile', verifyToken, authController.getProfile); // Removed or remapped to getMe
 // router.put('/auth/profile', verifyToken, authController.updateProfile); // TODO: Add updateProfile to authController if needed, or keep separate userController logic. 
@@ -46,11 +48,13 @@ router.get('/contacts', verifyToken, contactController.getMyContacts);
 // --- SEEDER ROUTES (DEV) ---
 router.post('/seed/users', seedUsers);
 
+const communityRoutes = require('./communityRoutes');
+
 // --- CHAT ROUTES ---
 router.post('/chats/private', verifyToken, chatController.createPrivateChat);
 router.post('/chats/group', verifyToken, chatController.createGroupChat);
-router.post('/chats/community', verifyToken, chatController.createCommunity);
-router.get('/communities/:communityId', verifyToken, chatController.getCommunity);
+// Community routes now handled by communityRoutes mounted at /communities
+router.use('/communities', verifyToken, communityRoutes);
 router.get('/chats', verifyToken, chatController.getMyChats);
 router.post('/chats/favorite', verifyToken, chatController.toggleFavorite);
 router.post('/chats/archive', verifyToken, chatController.toggleArchive);
@@ -79,6 +83,7 @@ router.post('/users/block', verifyToken, chatController.blockUser);
 router.post('/users/unblock', verifyToken, chatController.unblockUser);
 
 router.post('/messages', verifyToken, chatController.sendMessage);
+router.post('/messages/:messageId/ack', verifyToken, chatController.ackMessage); // 🎯 NEW: ACK Route
 router.get('/messages/:chatId', verifyToken, chatController.getMessages);
 
 // --- HEALTH CHECK ---
@@ -106,6 +111,7 @@ const callController = require('../controllers/callController');
 // --- CALL ROUTES ---
 router.post('/calls/save', verifyToken, callController.saveCall);
 router.get('/calls/history/:userId', verifyToken, callController.getCallHistory);
+router.get('/calls/:callId', verifyToken, callController.getCallById);
 
 const stickerController = require('../controllers/stickerController');
 

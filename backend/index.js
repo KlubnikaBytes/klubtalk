@@ -11,6 +11,20 @@ dotenv.config();
 // 2. Connect to MongoDB
 connectDB();
 
+// 3. Initialize Firebase Admin SDK for Push Notifications
+const admin = require('firebase-admin');
+const serviceAccount = require('./src/config/firebase-admin.json');
+
+try {
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('🔥 Firebase Admin SDK initialized');
+} catch (error) {
+    console.error('Failed to initialize Firebase Admin SDK:', error);
+}
+
+
 // --- Auto-Repair: Clean up broken chats ---
 const Chat = require('./src/models/Chat');
 (async () => {

@@ -91,10 +91,20 @@ exports.getMyChats = async (req, res) => {
                 return p;
             });
 
+            // Ensure UID is string for Map access
+            const uidStr = req.uid.toString();
+            const unread = (chat.unreadCounts && chat.unreadCounts[uidStr]) || 0;
+
+            // DEBUG: Log if we have unread counts but they aren't showing
+            if (chat.unreadCounts && Object.keys(chat.unreadCounts).length > 0) {
+                console.log(`[DEBUG_CHAT] Chat ${chat._id}: UnreadMap=${JSON.stringify(chat.unreadCounts)}, MyUID=${uidStr}, Result=${unread}`);
+            }
+
             return {
                 ...chat,
                 participants: sanitizedParticipants,
-                isArchivedSelf: archivedIds.includes(chat._id.toString())
+                isArchivedSelf: archivedIds.includes(chat._id.toString()),
+                unreadCount: unread
             };
         });
 
@@ -110,6 +120,12 @@ exports.getMessages = async (req, res) => {
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
+
+
+        // Reset Unread Count for ME
+        const updateKey = `unreadCounts.${req.uid}`;
+        await Chat.findByIdAndUpdate(chatId, { $set: { [updateKey]: 0 } });
+
         res.json(messages.reverse());
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -174,7 +190,27 @@ exports.sendMessage = async (req, res) => {
             mediaUrl,
             status: 'sent'
         });
-        await Chat.findByIdAndUpdate(chatId, { lastMessage: message._id, updatedAt: new Date() });
+
+        // Prepare Unread Increment
+        // We need to increment for ALL participants EXCEPT sender
+        const chatDoc = await Chat.findById(chatId);
+        if (chatDoc) {
+            const recipients = chatDoc.participants.filter(p => p.toString() !== req.uid);
+            const incUpdate = {};
+            recipients.forEach(r => {
+                incUpdate[`unreadCounts.${r.toString()}`] = 1;
+            });
+
+            console.log(`[DEBUG_MSG] Chat ${chatId}: Incrementing unread for`, JSON.stringify(incUpdate));
+
+            const upRes = await Chat.findByIdAndUpdate(chatId, {
+                lastMessage: message._id,
+                updatedAt: new Date(),
+                $inc: incUpdate // Atomic increment
+            }, { new: true });
+
+            console.log(`[DEBUG_MSG] Chat ${chatId} Updated. New Counts:`, JSON.stringify(upRes.unreadCounts));
+        }
 
         // --- Socket Emission for Real-time Delivery ---
         try {
@@ -194,8 +230,72 @@ exports.sendMessage = async (req, res) => {
             // Don't fail the request if socket fails
         }
 
+        // --- Push Notification for Offline Recipients ---
+        try {
+            const { sendMessageNotification } = require('../utils/notification_helper');
+            const { getIO } = require('../socket');
+            const onlineUsers = getIO()._onlineUsers || new Map(); // Access online users map
+
+            // Get all participants except sender
+            const recipients = chat.participants.filter(p => p.toString() !== req.uid);
+
+            for (const recipientId of recipients) {
+                // Check if recipient is offline
+                if (!onlineUsers.has(recipientId.toString())) {
+                    // Get sender info
+                    const sender = await User.findById(req.uid).select('name');
+                    const senderName = sender?.name || 'Someone';
+
+                    // Send push notification
+                    await sendMessageNotification(
+                        recipientId.toString(),
+                        senderName,
+                        content || 'Media',
+                        chatId,
+                        req.uid
+                    );
+                }
+            }
+        } catch (notifErr) {
+            console.error("Push notification error:", notifErr);
+            // Don't fail the request if notification fails
+        }
+
         res.json(message);
     } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// 🎯 NEW: HTTP ACK for Background Delivery
+exports.ackMessage = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const msg = await Message.findById(messageId);
+        if (!msg) return res.status(404).json({ error: "Message not found" });
+
+        // Only update if I am receiver
+        if (msg.senderId.toString() !== req.uid && msg.status !== 'seen') {
+            await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+
+            // Try to socket emit to sender
+            try {
+                const { getIO } = require('../socket');
+                const io = getIO();
+                const onlineUsers = require('../socket').getOnlineUsers(); // Need to export this or check logic
+                // Actually relying on io.to(uid) is enough if they are in their room.
+
+                io.to(msg.senderId.toString()).emit('message_delivered', {
+                    messageId: msg._id,
+                    chatId: msg.chatId,
+                    userId: req.uid
+                });
+            } catch (sErr) {
+                console.log("Socket emit failed in ACK:", sErr);
+            }
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 };
 
 // --- Groups ---
