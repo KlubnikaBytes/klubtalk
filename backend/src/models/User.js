@@ -12,8 +12,9 @@ const userSchema = new mongoose.Schema({
     fcmToken: { type: String, default: '' }, // Firebase Cloud Messaging token for push notifications
     blockedUsers: [String], // Array of firebaseUids
     archivedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Archive
-    mutedStatusAuthors: [{ type: String }], // Array of firebaseUids of users whose status is muted
-    blockedUsers: [{ type: String }], // Array of userIds (firebaseUid or ObjectId depending on auth)
+    favoritedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Favorites
+    mutedStatusAuthors: [{ type: String }], // Array of firebaseUids
+    // blockedUsers is already defined above, removing duplicate
     blockedByUsers: [{ type: String }], // Array of userIds
 });
 

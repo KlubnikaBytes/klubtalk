@@ -405,10 +405,6 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
             const PopupMenuItem(value: 'New group', child: Text('New group')),
             const PopupMenuItem(value: 'New community', child: Text('New community')),
             const PopupMenuItem(value: 'Archived', child: Text('Archived')),
-            const PopupMenuItem(value: 'Broadcast lists', child: Text('Broadcast lists')),
-            const PopupMenuItem(value: 'Linked devices', child: Text('Linked devices')),
-            const PopupMenuItem(value: 'Starred', child: Text('Starred')),
-            const PopupMenuItem(value: 'Payments', child: Text('Payments')),
             const PopupMenuItem(value: 'Settings', child: Text('Settings')),
           ],
         ),
@@ -702,7 +698,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
            final isFavorite = (chatData['isFavoriteSelf'] as bool?) ?? false;
            
-           var unreadCount = (chatData['unreadCountSelf'] as num?)?.toInt() ?? 0;
+           var unreadCount = (chatData['unreadCount'] as num?)?.toInt() ?? 0;
            if (_store.isMarkedUnread(chatId)) unreadCount = 1; 
            // If manually marked "read" but backend says unread? 
            // We can track markRead in store too if needed, but for now markUnread is priority.

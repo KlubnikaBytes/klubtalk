@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/screens/settings/privacy_screen.dart';
 import 'package:whatsapp_clone/screens/settings/profile_edit_screen.dart';
-import 'package:whatsapp_clone/screens/settings/notification_settings_screen.dart'; // Added
+import 'package:whatsapp_clone/screens/settings/notification_settings_screen.dart';
+import 'package:whatsapp_clone/screens/settings/account_screen.dart';
+import 'package:whatsapp_clone/screens/settings/chats_settings_screen.dart';
+import 'package:whatsapp_clone/screens/settings/storage_data_screen.dart';
+import 'package:whatsapp_clone/screens/settings/help_screen.dart';
+import 'package:whatsapp_clone/screens/settings/avatar_screen.dart';
 import 'package:whatsapp_clone/services/user_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
@@ -51,22 +56,22 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
 
           // Settings Options
-          _buildSettingItem(context, Icons.key, 'Account', 'Security notifications, change number', null),
+          _buildSettingItem(context, Icons.key, 'Account', 'Security notifications, change number', const AccountScreen()),
           _buildSettingItem(context, Icons.lock, 'Privacy', 'Block contacts, disappearing messages', const PrivacyScreen()),
-          _buildSettingItem(context, Icons.face, 'Avatar', 'Create, edit, profile photo', null),
-          _buildSettingItem(context, Icons.chat, 'Chats', 'Theme, wallpapers, chat history', null),
+          _buildSettingItem(context, Icons.face, 'Avatar', 'Create, edit, profile photo', const AvatarScreen()),
+          _buildItem(context, Icons.chat, 'Chats', 'Theme, wallpapers, chat history', const ChatsSettingsScreen()),
           _buildSettingItem(context, Icons.notifications, 'Notifications', 'Message, group & call tones', const NotificationSettingsScreen()),
-          _buildSettingItem(context, Icons.sd_storage, 'Storage and data', 'Network usage, auto-download', null),
+          _buildSettingItem(context, Icons.sd_storage, 'Storage and data', 'Network usage, auto-download', const StorageDataScreen()),
           _buildSettingItem(context, Icons.language, 'App language', 'English (device\'s language)', null),
-          _buildSettingItem(context, Icons.help_outline, 'Help', 'Help center, contact us, privacy policy', null),
-          _buildSettingItem(context, Icons.group_add, 'Invite a friend', '', null),
+          _buildSettingItem(context, Icons.help_outline, 'Help', 'Help center, contact us, privacy policy', const HelpScreen()),
+          _buildFriendInvite(context),
           
           const SizedBox(height: 20),
           const Center(
             child: Column(
               children: [
                 Text('from', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                Text('Meta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black)),
+                Text('Klubnika Bytes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black)),
               ],
             ),
           ),
@@ -84,8 +89,27 @@ class SettingsScreen extends StatelessWidget {
       onTap: () {
         if (destination != null) {
           Navigator.push(context, MaterialPageRoute(builder: (context) => destination));
+        } else {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$title feature coming soon")));
         }
       },
     );
+  }
+  
+  // Method to handle type mismatch in replacing _buildSettingItem for Chats above (I used _buildItem but method is _buildSettingItem)
+  // Let's just reuse _buildSettingItem.
+  Widget _buildItem(BuildContext context, IconData icon, String title, String subtitle, Widget? destination) {
+      return _buildSettingItem(context, icon, title, subtitle, destination);
+  }
+
+  Widget _buildFriendInvite(BuildContext context) {
+      return ListTile(
+          leading: Icon(Icons.group_add, color: Colors.grey[700]),
+          title: const Text("Invite a friend"),
+          onTap: () {
+             // Share logic stub
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invite friend clicked")));
+          },
+      );
   }
 }

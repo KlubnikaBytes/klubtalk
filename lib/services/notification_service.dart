@@ -47,7 +47,7 @@ class NotificationService {
             
             // 🔄 MAKE IT RING CONTINUOUSLY
             additionalFlags: Int32List.fromList([4]), // FLAG_INSISTENT
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/notification_icon',
             
             // 🔊 NOISY but SILENT SOUND
             playSound: true,
@@ -89,7 +89,7 @@ class NotificationService {
             category: AndroidNotificationCategory.missedCall,
             importance: Importance.high,
             priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
+            icon: '@drawable/notification_icon',
           ),
         ),
       );
@@ -100,7 +100,7 @@ class NotificationService {
     print('🔔 Initializing NotificationService...');
     
     const AndroidInitializationSettings androidSettings = 
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@drawable/notification_icon');
     
     await _fln.initialize(
       const InitializationSettings(android: androidSettings),
@@ -193,7 +193,7 @@ class NotificationService {
     if (type == 'message') {
       await _showMessageNotification(message);
     } else if (type == 'message_read') {
-      await _cancelMessageNotification(message.data['messageId']);
+      await cancelMessageNotification(message.data['messageId']);
     } else if (type == 'call') {
       await _showCallNotification(message);
     } else if (type == 'call_end') {
@@ -259,7 +259,8 @@ class NotificationService {
           channel.name,
           importance: Importance.max,
           priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
+          icon: '@drawable/notification_icon',
+          largeIcon: const DrawableResourceAndroidBitmap('@drawable/notification_icon'),
           sound: channel.sound,
           enableVibration: channel.enableVibration,
           vibrationPattern: channel.vibrationPattern,
@@ -272,6 +273,14 @@ class NotificationService {
   }
   
 
+
+  /// Cancel a specific message notification
+  static Future<void> cancelMessageNotification(String? messageId) async {
+    if (messageId == null) return;
+    final int id = messageId.hashCode;
+    await _fln.cancel(id);
+    print("❌ Message notification cancelled (ID: $id from msgId: $messageId)");
+  }
 
   static Future<void> cancelCallNotification() async {
       // 🛑 STOP NATIVE RINGTONE
@@ -287,13 +296,6 @@ class NotificationService {
       print("❌ Call notification cancelled (ID: 12345)");
   }
 
-  /// Cancel message notification
-  static Future<void> _cancelMessageNotification(String? messageId) async {
-    if (messageId == null) return;
-    
-    final id = messageId.hashCode;
-    await _fln.cancel(id);
-    print('❌ Cancelled notification for message: $messageId');
-  }
+
 
 }

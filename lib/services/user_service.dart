@@ -111,7 +111,7 @@ class UserService {
     );
   }
 
-  // Update Profile Photo
+  // Update Profile Photo (File)
   Future<String> updateProfilePhoto(dynamic imageFile) async {
     try {
       final uploadService = MediaUploadService();
@@ -124,6 +124,24 @@ class UserService {
       return url;
     } catch (e) {
       throw Exception('Failed to upload image: $e');
+    }
+  }
+
+  // Update Profile Photo (Direct URL)
+  Future<void> updateProfilePhotoUrl(String url) async {
+    try {
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/auth/me'),
+        headers: await _getHeaders(),
+        body: jsonEncode({'avatar': url}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update profile photo URL');
+      }
+    } catch (e) {
+      print('Profile Photo URL Update Error: $e');
+      rethrow;
     }
   }
 

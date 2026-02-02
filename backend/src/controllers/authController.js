@@ -25,11 +25,9 @@ exports.sendOtp = async (req, res) => {
         await Otp.create({ phone, otp });
 
         // Send via 2Factor API
-        // Template: https://2factor.in/API/V1/{API_KEY}/SMS/{PHONE_NUMBER}/{OTP}
-        const url = `https://2factor.in/API/V1/${SMS_API_KEY}/SMS/${phone}/${otp}`;
-
-        // We don't await this to block? better to await to ensure it didn't fail
-        await axios.get(url);
+        // Send via MSG91 (DLT Compliant)
+        const sendOtpSms = require('../utils/sendOtpSms');
+        await sendOtpSms(phone, otp);
 
         res.json({ message: 'OTP sent successfully' });
     } catch (error) {

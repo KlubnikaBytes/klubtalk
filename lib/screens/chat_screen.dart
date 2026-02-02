@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:whatsapp_clone/services/notification_service.dart'; 
 import 'package:flutter/material.dart';
+
+
 import 'package:file_picker/file_picker.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
@@ -25,6 +28,7 @@ import 'package:whatsapp_clone/widgets/voice_recorder_widget.dart';
 import 'package:whatsapp_clone/widgets/audio_message_bubble.dart';
 import 'package:whatsapp_clone/widgets/sticker_picker_widget.dart';
 import 'package:whatsapp_clone/widgets/sticker_message_widget.dart';
+import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/models/sticker_model.dart';
 
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
@@ -521,6 +525,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
           _messages = messages.reversed.toList(); // Store Newest First
           _isLoading = false;
         });
+        
+        // Cancel notifications for these messages since we are viewing them
+        for (var msg in messages) {
+           if (msg['senderId'] != AuthService().currentUserId) {
+              // Cancel notification for this message
+              NotificationService.cancelMessageNotification(msg['_id']);
+           }
+        }
+
         if (updateLoading) {
              // If newest is at 0, and we use reverse list view, we are already at 0 scroll offset usually?
              // But force scroll to 0 (bottom) anyway
@@ -1153,7 +1166,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                   GestureDetector(
                     onTap: _sendMessage,
                     child: const CircleAvatar(
-                      backgroundColor: Color(0xFF9575CD),
+                      backgroundColor: Color(0xFFC92136),
                       radius: 24,
                       child: Icon(Icons.send, color: Colors.white),
                     ),

@@ -44,15 +44,15 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Placeholder Icon
-              Icon(
-                Icons.chat_bubble_rounded,
-                size: 80,
-                color: Theme.of(context).primaryColor,
+              // App Logo
+              Image.asset(
+                'assets/images/logo.jpg',
+                width: 120,
+                height: 120,
               ),
               const SizedBox(height: 20),
               Text(
-                'Messaging App',
+                'KlubTalk',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).primaryColor,

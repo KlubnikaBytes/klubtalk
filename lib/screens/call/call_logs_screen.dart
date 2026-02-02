@@ -195,7 +195,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
               trailing: IconButton(
                 icon: Icon(
                     isVideo ? Icons.videocam : Icons.call, // Strict Icon type
-                    color: const Color(0xFF075E54) // WhatsApp Teal
+                    color: const Color(0xFFC92136)
                 ),
                 onPressed: () {
                    // Click to Call - Strict routing based on log type

@@ -63,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           children: [
             const Text(
-              'Messaging App will need to verify your phone number.',
+              'KlubTalk will need to verify your phone number.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16),
             ),

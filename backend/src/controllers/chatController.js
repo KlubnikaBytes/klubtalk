@@ -68,9 +68,10 @@ exports.getMyChats = async (req, res) => {
             .lean() // Use lean to modify the object
             .sort({ updatedAt: -1 });
 
-        // Fetch User to get archived list AND blocked lists
-        const user = await User.findById(req.uid).select('archivedChats blockedUsers blockedByUsers');
+        // Fetch User to get archived list, favorites AND blocked lists
+        const user = await User.findById(req.uid).select('archivedChats favoritedChats blockedUsers blockedByUsers');
         const archivedIds = user?.archivedChats?.map(id => id.toString()) || [];
+        const favoritedIds = user?.favoritedChats?.map(id => id.toString()) || [];
         const blockedSet = new Set([
             ...(user?.blockedUsers || []),
             ...(user?.blockedByUsers || [])
@@ -104,6 +105,7 @@ exports.getMyChats = async (req, res) => {
                 ...chat,
                 participants: sanitizedParticipants,
                 isArchivedSelf: archivedIds.includes(chat._id.toString()),
+                isFavoriteSelf: favoritedIds.includes(chat._id.toString()),
                 unreadCount: unread
             };
         });
@@ -251,8 +253,11 @@ exports.sendMessage = async (req, res) => {
                         recipientId.toString(),
                         senderName,
                         content || 'Media',
-                        chatId,
-                        req.uid
+                        {
+                            chatId: chatId,
+                            messageId: message._id.toString(),
+                            senderId: req.uid
+                        }
                     );
                 }
             }
@@ -345,9 +350,27 @@ exports.getCommunity = async (req, res) => {
 
 // --- Features (Stubs/Basic Impl) ---
 exports.toggleFavorite = async (req, res) => {
-    // Requires 'isFavorite' field in Chat schema or User-Chat mapping. 
-    // For now success stub.
-    res.json({ success: true });
+    try {
+        const { chatId } = req.body;
+        const user = await User.findById(req.uid);
+
+        if (!user.favoritedChats) user.favoritedChats = [];
+
+        const index = user.favoritedChats.indexOf(chatId);
+        let isFavorite = false;
+        if (index === -1) {
+            user.favoritedChats.push(chatId);
+            isFavorite = true;
+        } else {
+            user.favoritedChats.splice(index, 1);
+            isFavorite = false;
+        }
+
+        await user.save();
+        res.json({ success: true, isFavorite });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 };
 
 exports.toggleArchive = async (req, res) => {

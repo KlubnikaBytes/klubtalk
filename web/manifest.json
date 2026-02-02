@@ -1,6 +1,6 @@
 {
-    "name": "whatsapp_clone",
-    "short_name": "whatsapp_clone",
+    "name": "KlubTalk",
+    "short_name": "KlubTalk",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#hex_code",

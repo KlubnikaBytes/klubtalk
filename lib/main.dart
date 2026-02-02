@@ -172,7 +172,7 @@ class _MyAppState extends State<MyApp> {
       navigatorObservers: [routeObserver],
       scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
-      title: 'Messaging App',
+      title: 'KlubTalk',
       theme: ThemeData(
          primaryColor: const Color(0xFFC92136),
          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC92136)),
