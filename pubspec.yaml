@@ -38,6 +38,7 @@ dependencies:
   shared_preferences: ^2.2.2
   device_info_plus: ^12.3.0
   hive_flutter: ^1.1.0
+  android_intent_plus: ^4.0.3
 
 dev_dependencies:
   flutter_test:

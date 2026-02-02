@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <application
         android:label="KlubTalk"
-        android:name="${applicationName}"
+        android:name=".MyApplication"
         android:icon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true"
         android:networkSecurityConfig="@xml/network_security_config"
@@ -52,6 +52,21 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        
+        <!-- BroadcastReceiver for Call Ringtone Playback -->
+        <receiver
+            android:name=".CallNotificationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.whatsapp_clone.CALL_INCOMING" />
+                <action android:name="com.example.whatsapp_clone.CALL_STOP" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Service for Ringtone Playback -->
+        <service
+            android:name=".RingtoneService"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Added
 import 'package:permission_handler/permission_handler.dart'; // Added
+import 'package:android_intent_plus/android_intent.dart'; // For fallback broadcast
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _fln = 
@@ -21,16 +22,25 @@ class NotificationService {
       
       print("📞 Showing Call Notification: $callerName ($callType)");
 
-      // 🎵 START NATIVE RINGTONE
+      // 🎵 START RINGTONE via BroadcastReceiver
       try {
         final prefs = await SharedPreferences.getInstance();
-        final String? customRingtone = prefs.getString('call_ringtone');
+        final String ringtoneUri = prefs.getString('call_ringtone') ?? '';
         
-        const channel = MethodChannel('com.example.whatsapp_clone/ringtone');
-        await channel.invokeMethod('playIncoming', {'uri': customRingtone});
-        print("🎵 Native Ringtone Started with URI: $customRingtone");
+        print("🔍 Sending broadcast to start ringtone with URI: $ringtoneUri");
+        
+        // Send broadcast to CallNotificationReceiver (works from background!)
+        final intent = AndroidIntent(
+          action: 'com.example.whatsapp_clone.CALL_INCOMING',
+          package: 'com.example.whatsapp_clone',
+          arguments: <String, dynamic>{'ringtone_uri': ringtoneUri},
+          flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
+        );
+        await intent.sendBroadcast();
+        
+        print("✅ Ringtone broadcast sent successfully");
       } catch (e) {
-        print("Error starting native ringtone: $e");
+        print("❌ ERROR sending broadcast: $e");
       }
 
       await _fln.show(
@@ -49,9 +59,8 @@ class NotificationService {
             additionalFlags: Int32List.fromList([4]), // FLAG_INSISTENT
             icon: '@drawable/notification_icon',
             
-            // 🔊 NOISY but SILENT SOUND
-            playSound: true,
-            sound: const RawResourceAndroidNotificationSound('silent_sound'),
+            // 🔊 SOUND handled by native MediaPlayer, vibration by notification
+            playSound: false, // Native MediaPlayer plays the actual ringtone
             enableVibration: true,
             vibrationPattern: Int64List.fromList([0, 1000, 500, 1000, 500, 1000, 500, 1000]), // Long pattern
             
@@ -160,9 +169,8 @@ class NotificationService {
             description: 'Rings like a real phone call',
             importance: Importance.max,
             
-            // 🔊 NOISY NOTIFICATION (To trigger Vibration) but SILENT SOUND
-            playSound: true, 
-            sound: const RawResourceAndroidNotificationSound('silent_sound'),
+            // 🔊 SOUND handled by native MediaPlayer, vibration by notification
+            playSound: false, // Native MediaPlayer plays the actual ringtone
             enableVibration: true,
             vibrationPattern: Int64List.fromList([0, 1000, 500, 1000, 500, 1000, 500, 1000]),
           ),
@@ -283,13 +291,17 @@ class NotificationService {
   }
 
   static Future<void> cancelCallNotification() async {
-      // 🛑 STOP NATIVE RINGTONE
+      // 🛑 STOP RINGTONE via Broadcast
       try {
-        const channel = MethodChannel('com.example.whatsapp_clone/ringtone');
-        await channel.invokeMethod('stop');
-        print("🛑 Native Ringtone Stopped");
+        final intent = AndroidIntent(
+          action: 'com.example.whatsapp_clone.CALL_STOP',
+          package: 'com.example.whatsapp_clone',
+          flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
+        );
+        await intent.sendBroadcast();
+        print("🛑 Ringtone stop broadcast sent");
       } catch (e) {
-        print("Error stopping native ringtone: $e");
+        print("Error stopping ringtone: $e");
       }
       
       await _fln.cancel(12345);
