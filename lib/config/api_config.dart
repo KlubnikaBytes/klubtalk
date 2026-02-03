@@ -5,12 +5,12 @@ class ApiConfig {
   static String get baseUrl {
     String url;
     if (kIsWeb) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:5000';
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:6000';
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.7:5000';
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.7:6000';
     } else {
       // iOS, Windows, macOS, Linux
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://127.0.0.1:5000';
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://127.0.0.1:6000';
     }
     return url;
   }
