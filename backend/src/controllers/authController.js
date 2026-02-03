@@ -11,28 +11,38 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 
 exports.sendOtp = async (req, res) => {
     try {
+        console.log('🔐 [AUTH] sendOtp endpoint hit');
         const { phone } = req.body;
-        if (!phone) return res.status(400).json({ message: 'Phone number is required' });
+        console.log('   📱 Phone:', phone);
+
+        if (!phone) {
+            console.log('   ❌ No phone number provided');
+            return res.status(400).json({ message: 'Phone number is required' });
+        }
 
         // Generate OTP
         const otp = generateOTP();
+        console.log('   🔢 Generated OTP:', otp);
 
         // Save to DB (upsert-like behavior not needed per se, but good to clean old ones if any? 
         // We'll just create a new doc, TTL handles cleanup)
         // Better: delete existing OTPs for this phone first to avoid duplicates
         await Otp.deleteMany({ phone });
+        console.log('   🗑️  Deleted old OTPs for this phone');
 
         await Otp.create({ phone, otp });
+        console.log('   💾 OTP saved to database');
 
-        // Send via 2Factor API
         // Send via MSG91 (DLT Compliant)
+        console.log('   📤 Sending OTP via SMS...');
         const sendOtpSms = require('../utils/sendOtpSms');
         await sendOtpSms(phone, otp);
+        console.log('   ✅ OTP SMS sent successfully');
 
         res.json({ message: 'OTP sent successfully' });
     } catch (error) {
-        console.error('Send OTP Error:', error);
-        res.status(500).json({ message: 'Failed to send OTP' });
+        console.error('❌ Send OTP Error:', error);
+        res.status(500).json({ message: 'Failed to send OTP', error: error.message });
     }
 };
 

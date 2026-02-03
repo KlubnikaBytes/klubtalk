@@ -22,14 +22,31 @@ class AuthService {
 
   // Send OTP
   Future<void> sendOtp(String phone) async {
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/auth/send-otp'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone}),
-    );
+    final url = '${ApiConfig.baseUrl}/auth/send-otp';
+    print('🔐 [AUTH DEBUG] Sending OTP to backend');
+    print('   📍 URL: $url');
+    print('   📱 Phone: $phone');
+    
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone}),
+      );
 
-    if (response.statusCode != 200) {
-      throw Exception(jsonDecode(response.body)['message'] ?? 'Failed to send OTP');
+      print('   📬 Response Status: ${response.statusCode}');
+      print('   📬 Response Body: ${response.body}');
+
+      if (response.statusCode != 200) {
+        final errorMsg = jsonDecode(response.body)['message'] ?? 'Failed to send OTP';
+        print('   ❌ OTP Error: $errorMsg');
+        throw Exception(errorMsg);
+      }
+      
+      print('   ✅ OTP sent successfully');
+    } catch (e) {
+      print('   ❌ Exception sending OTP: $e');
+      rethrow;
     }
   }
 
