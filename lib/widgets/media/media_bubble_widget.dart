@@ -20,17 +20,25 @@ class MediaBubbleWidget extends StatelessWidget {
     final String mimeType = (message['mimeType'] ?? message['mime'] ?? '').toString().toLowerCase();
 
     // 2. Route
+    print('📊 MediaBubbleWidget DEBUG:');
+    print('   Type: $type');
+    print('   MimeType: $mimeType');
+    print('   Has filename: ${message.containsKey('filename')}');
+    
     // VIDEO
     if (type == 'video' || mimeType.startsWith('video/')) {
+      print('   → Routing to VideoBubbleWidget');
       return VideoBubbleWidget(message: message, isMe: isMe);
     }
 
     // IMAGE (Strict: Don't allow video mimes here ever)
     if ((type == 'image' && !mimeType.startsWith('video')) || mimeType.startsWith('image/')) {
+      print('   → Routing to ImageBubbleWidget');
       return ImageBubbleWidget(message: message, isMe: isMe);
     }
 
     // DOCUMENTS / OTHERS
+    print('   → Routing to DocumentBubbleWidget');
     return DocumentBubbleWidget(message: message, isMe: isMe);
   }
 }

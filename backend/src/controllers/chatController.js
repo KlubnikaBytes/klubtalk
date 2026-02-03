@@ -161,7 +161,7 @@ const { getIO } = require('../socket'); // Import socket helper
 
 exports.sendMessage = async (req, res) => {
     try {
-        const { chatId, content, type, mediaUrl, tempId } = req.body;
+        const { chatId, content, type, mediaUrl, tempId, mime, mimeType, filename, size, previewUrl, originalUrl } = req.body;
 
         // 1. Check Block Status
         const chat = await Chat.findById(chatId);
@@ -183,15 +183,28 @@ exports.sendMessage = async (req, res) => {
                 return res.status(403).json({ error: "Only admins can send messages in this group." });
             }
         }
-        // Fallback REST endpoint. Ideally use Socket.
-        const message = await Message.create({
+
+        // **FIX: Include all media fields for proper document display**
+        const messageData = {
             chatId,
             senderId: req.uid,
             content,
             type: type || 'text',
             mediaUrl,
             status: 'sent'
-        });
+        };
+
+        // Add optional media fields if present
+        if (mime || mimeType) messageData.mimeType = mime || mimeType;
+        if (filename) messageData.filename = filename;
+        if (size) messageData.size = size;
+        if (previewUrl) messageData.previewUrl = previewUrl;
+        if (originalUrl) messageData.originalUrl = originalUrl;
+
+        console.log('[DEBUG_MSG] Creating message with data:', JSON.stringify(messageData));
+
+        // Fallback REST endpoint. Ideally use Socket.
+        const message = await Message.create(messageData);
 
         // Prepare Unread Increment
         // We need to increment for ALL participants EXCEPT sender

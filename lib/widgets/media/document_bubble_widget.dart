@@ -1,7 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as path;
 
 class DocumentBubbleWidget extends StatelessWidget {
   final Map<String, dynamic> message;
@@ -21,17 +25,51 @@ class DocumentBubbleWidget extends StatelessWidget {
 
   Future<void> _openFile() async {
     final content = message['content'] ?? message['url'] ?? '';
-    if (content.isEmpty) return;
+    print('📄 Document tap: content=$content');
     
-    final url = Uri.parse(_getFullUrl(content));
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (content.isEmpty) {
+      print('❌ Document tap: content is empty');
+      return;
+    }
+    
+    final fullUrl = _getFullUrl(content);
+    print('📄 Document tap: fullUrl=$fullUrl');
+    
+    try {
+      // Download the file first
+      print('⬇️ Downloading document...');
+      final response = await http.get(Uri.parse(fullUrl));
+      
+      if (response.statusCode == 200) {
+        // Get temp directory
+        final dir = await getTemporaryDirectory();
+        final filename = path.basename(content);
+        final file = File('${dir.path}/$filename');
+        
+        // Save file
+        await file.writeAsBytes(response.bodyBytes);
+        print('✅ Document saved to: ${file.path}');
+        
+        // Open with default app using open_file package
+        final result = await OpenFile.open(file.path);
+        print('📄 Open result: ${result.message}');
+        
+        if (result.type != ResultType.done) {
+          print('❌ Failed to open: ${result.message}');
+        }
+      } else {
+        print('❌ Download failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error opening document: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String filename = message['filename'] ?? 'Document';
+    // Extract just the filename from the path (in case it contains directory structure)
+    final String rawFilename = message['filename'] ?? 'Document';
+    final String filename = path.basename(rawFilename);
     final int? size = message['size']; // in bytes
 
     String sizeStr = '';

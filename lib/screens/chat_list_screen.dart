@@ -859,6 +859,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 if (type == 'image') preview = '📷 Photo';
                 if (type == 'video') preview = '🎥 Video';
                 if (type == 'audio' || type == 'voice') preview = '🎙️ Voice message';
+                if (type == 'file' || type == 'document') {
+                  final filename = lm['filename'] ?? 'Document';
+                  preview = '📄 $filename';
+                }
                 
                 // Add Sender Name Prefix
                 String senderPrefix = '';

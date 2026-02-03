@@ -136,13 +136,24 @@ exports.getFeed = async (req, res) => {
 
         // 1. Resolve all possible IDs for current user (handle split identity)
         const myIds = [currentUserId, me?.firebaseUid].filter(Boolean);
+        console.log(`🔑 MY IDS (for contact query):`, myIds);
 
         // 2. Get My Contacts
         const myContacts = await Contact.find({ ownerUserId: { $in: myIds } });
+        console.log(`📱 MY CONTACTS COUNT: ${myContacts.length}`);
+        console.log(`📱 MY CONTACT PHONES:`, myContacts.map(c => c.phone));
+
         const contactPhones = myContacts.map(c => c.phone);
 
+        // Debug: Check what contacts exist in DB
+        const allContactsInDb = await Contact.find({}).limit(5);
+        console.log(`🔍 SAMPLE CONTACTS IN DB:`, allContactsInDb.map(c => ({ ownerUserId: c.ownerUserId, phone: c.phone })));
+
         // 3. Resolve Authors from Contacts
-        const authors = await User.find({ phone: { $in: contactPhones } }).select('_id');
+        const authors = await User.find({ phone: { $in: contactPhones } }).select('_id phone');
+        console.log(`👥 MATCHED AUTHORS COUNT: ${authors.length}`);
+        console.log(`👥 MATCHED AUTHORS:`, authors.map(a => ({ id: a._id.toString(), phone: a.phone })));
+
         const authorIds = authors.map(u => u._id.toString());
 
         const excludeSet = new Set([
@@ -150,7 +161,11 @@ exports.getFeed = async (req, res) => {
             ...(me?.blockedByUsers || [])
         ].map(id => id.toString()));
 
+        console.log(`🚫 BLOCKED/BLOCKED BY:`, Array.from(excludeSet));
+
         const allowedAuthorIds = authorIds.filter(id => !excludeSet.has(id));
+        console.log(`✅ ALLOWED AUTHOR IDS (after block filter):`, allowedAuthorIds);
+
         const feedUserIds = [currentUserId, ...allowedAuthorIds];
 
         console.log("STATUS OWNERS IN DB:", await Status.distinct("userId"));
@@ -175,21 +190,23 @@ exports.getFeed = async (req, res) => {
             {
                 $lookup: {
                     from: "users",
-                    // We must match string ID or ObjectId? 
-                    // Status.userId is usually String if created via req.uid (from JWT string). 
-                    // BUT User._id is ObjectId. 
-                    // $lookup might fail if types mismatch. 
-                    // Let's assume userId is stored as String. 
-                    // If Mongo _id is Object, we need conversion. 
-                    // Usually Mongoose casts string to ObjectId in queries, but in Aggregate $lookup request localField must match.
-                    let: { uId: "$_id" },
+                    let: { statusUserId: "$_id" }, // This is the userId from the grouped statuses (String)
                     pipeline: [
-                        // Convert stored ObjectId to String for comparison OR match directly
-                        // Best to just match on _id if Status.userId is ObjectId. 
-                        // Check createStatus: `userId: currentUserId` (String usually).
-                        // We will attempt both conversions to be safe.
-                        { $addFields: { strId: { $toString: "$_id" } } },
-                        { $match: { $expr: { $eq: ["$strId", "$$uId"] } } }
+                        {
+                            $match: {
+                                $expr: {
+                                    // Convert statusUserId (String) to ObjectId and compare with User._id (ObjectId)
+                                    $eq: ["$_id", { $toObjectId: "$$statusUserId" }]
+                                }
+                            }
+                        },
+                        {
+                            $project: {
+                                name: 1,
+                                phone: 1,
+                                avatar: 1
+                            }
+                        }
                     ],
                     as: "user"
                 }

@@ -121,6 +121,12 @@ class ChatService {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadGenericFile(fileOrPath);
+      
+      print('📤 sendFileMessage DEBUG:');
+      print('   Upload returned type: ${mediaData['type']}');
+      print('   Upload returned mime: ${mediaData['mime']}');
+      print('   Sending type to backend: file');
+      
       // Backend derived type might be 'image'/'video'/'file'/'audio'.
       // But for "File Picker" flow, usage dictates it's a file attachment usually.
       // If backend says 'image', should we override to 'file'?

@@ -80,16 +80,34 @@ const uploadImage = async (req, res) => {
     let type = 'file';
     const mime = req.file.mimetype;
 
+    // **DEBUG LOGS FOR DOCUMENT UPLOAD**
+    console.log('📄 FILE UPLOAD DEBUG:');
+    console.log('   Original Name:', req.file.originalname);
+    console.log('   Mime Type:', mime);
+    console.log('   Field Name:', req.file.fieldname);
+    console.log('   File Path:', req.file.path);
+    console.log('   File Size:', req.file.size);
+
     if (mime.startsWith('image')) type = 'image';
     if (mime.startsWith('video')) type = 'video';
     if (mime.startsWith('audio')) type = 'audio'; // Optional, but usually audio is file or dedicated voice
+
+    console.log('   Detected Type:', type);
 
     // Correct extension based on intended type logic
     if (type === 'video') correctFileExtension(req.file, 'video');
     else if (type === 'image') correctFileExtension(req.file, 'image');
     // else file, keep original or detect generic? generic detectFileExtension handles some.
 
-    const filePath = `/uploads/images/${req.file.filename}`; // Storing all generic media in images folder for now or separate? 
+    // **FIX: Use correct folder based on type**
+    let folderPath = 'images'; // default
+    if (type === 'video') folderPath = 'videos';
+    else if (type === 'audio' || type === 'voice') folderPath = 'voice';
+    else if (type === 'file') folderPath = 'files';
+    // type === 'image' uses default 'images'
+
+    const filePath = `/uploads/${folderPath}/${req.file.filename}`;
+    console.log('   Storage Path:', filePath);
     // The prompt suggested: app.use("/uploads", express.static("uploads")); and storage destination 'uploads/'.
     // My storage config puts them in 'uploads/images', 'uploads/voice' etc.
     // I should probably keep 'uploads/images' for backward compatibility or use 'uploads/files'?
@@ -143,7 +161,12 @@ const storage = multer.diskStorage({
         } else if (file.fieldname === 'voice') {
             dest = 'uploads/voice/';
         } else if (file.fieldname === 'image') {
-            dest = 'uploads/images/';
+            // For 'image' fieldname, check mime type to route documents correctly
+            if (file.mimetype && !file.mimetype.startsWith('image') && !file.mimetype.startsWith('video')) {
+                dest = 'uploads/files/'; // Documents, PDFs, etc
+            } else {
+                dest = 'uploads/images/'; // Actual images and videos
+            }
         } else {
             // Fallbacks based on path/mimetype
             if (req.path.includes('/avatar')) dest = 'uploads/avatars/';

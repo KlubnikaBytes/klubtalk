@@ -667,7 +667,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
           }
 
           final tempId = DateTime.now().millisecondsSinceEpoch.toString();
-          final type = mimeType.startsWith('video/') ? 'video' : 'image';
+          
+          // **FIX: Properly detect file type including documents**
+          String type = 'image'; // default
+          if (mimeType.startsWith('video/')) {
+            type = 'video';
+          } else if (mimeType.startsWith('image/')) {
+            type = 'image';
+          } else {
+            // Documents, PDFs, etc
+            type = 'file';
+          }
           
           final optimisticMessage = {
             '_id': tempId,
@@ -684,8 +694,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
           });
           _scrollToBottom();
 
+          // **FIX: Route to correct send function based on type**
           if (type == 'video') {
               await _chatService.sendVideoMessage(widget.chatId, media.path, mimeType: mimeType, tempId: tempId);
+          } else if (type == 'file') {
+              await _chatService.sendFileMessage(widget.chatId, media.path, tempId: tempId);
           } else {
               await _chatService.sendImageMessage(widget.chatId, media.path, mimeType: mimeType, tempId: tempId);
           }

@@ -175,6 +175,28 @@ const syncContacts = async (req, res) => {
         // Identify unregistered contacts (phones from input that aren't in registeredUsers)
         const unregisteredContacts = normalizedInput.filter(p => !registeredPhones.has(p));
 
+        // **FIX: Persist contacts to database for status visibility**
+        // Bulk upsert all contacts (registered and unregistered)
+        const bulkOps = normalizedInput.map(phone => ({
+            updateOne: {
+                filter: { ownerUserId: req.user.uid, phone: phone },
+                update: {
+                    $set: {
+                        ownerUserId: req.user.uid,
+                        phone: phone,
+                        isRegistered: registeredPhones.has(phone),
+                        linkedUserId: registeredUsers.find(u => u.phone === phone)?._id?.toString() || null
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        if (bulkOps.length > 0) {
+            await Contact.bulkWrite(bulkOps);
+            console.log(`✅ Synced ${bulkOps.length} contacts for user ${req.user.uid}`);
+        }
+
         res.json({
             registered: registeredUsers,
             unregistered: unregisteredContacts
