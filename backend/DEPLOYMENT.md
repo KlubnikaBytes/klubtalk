@@ -60,7 +60,7 @@ pm2 status
 pm2 logs whatsapp-backend
 
 # Test health endpoint
-curl http://localhost:5000/health
+curl http://localhost:6000/health
 ```
 
 ### 4. Update Flutter App
@@ -69,7 +69,7 @@ Edit `lib/config/api_config.dart`:
 
 ```dart
 class ApiConfig {
-  static const String baseUrl = 'http://YOUR_VPS_IP:5000';
+  static const String baseUrl = 'http://YOUR_VPS_IP:6000';
   // Replace YOUR_VPS_IP with actual IP
   
   // ... rest stays same
@@ -85,8 +85,8 @@ Make sure `backend/.env` on VPS contains:
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/yourdb
 
 # Server Config
-PORT=5000
-BASE_URL=http://YOUR_VPS_IP:5000
+PORT=6000
+BASE_URL=http://YOUR_VPS_IP:6000
 
 # Firebase Admin SDK
 FIREBASE_PROJECT_ID=your-project-id
@@ -119,10 +119,10 @@ Response:
 
 ### Access Media
 ```
-GET http://YOUR_VPS_IP:5000/uploads/images/filename.jpg
-GET http://YOUR_VPS_IP:5000/uploads/files/document.pdf
-GET http://YOUR_VPS_IP:5000/uploads/voice/audio.mp3
-GET http://YOUR_VPS_IP:5000/uploads/avatars/profile.jpg
+GET http://YOUR_VPS_IP:6000/uploads/images/filename.jpg
+GET http://YOUR_VPS_IP:6000/uploads/files/document.pdf
+GET http://YOUR_VPS_IP:6000/uploads/voice/audio.mp3
+GET http://YOUR_VPS_IP:6000/uploads/avatars/profile.jpg
 ```
 
 ## 🎯 Data Storage Summary

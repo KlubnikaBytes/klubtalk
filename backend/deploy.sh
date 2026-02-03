@@ -41,8 +41,8 @@ if [ ! -f .env ]; then
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/yourdb
 
 # Server Configuration
-PORT=5000
-BASE_URL=http://YOUR_VPS_IP:5000
+PORT=6000
+BASE_URL=http://YOUR_VPS_IP:6000
 
 # Firebase Admin SDK
 FIREBASE_PROJECT_ID=your-project-id
@@ -71,5 +71,5 @@ ls -la ../uploads/
 
 echo ""
 echo "🌐 API URLs:"
-echo "   - Health: http://$(hostname -I | awk '{print $1}'):5000/health"
-echo "   - Uploads: http://$(hostname -I | awk '{print $1}'):5000/uploads/"
+echo "   - Health: http://$(hostname -I | awk '{print $1}'):6000/health"
+echo "   - Uploads: http://$(hostname -I | awk '{print $1}'):6000/uploads/"
