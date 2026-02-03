@@ -5,12 +5,18 @@ class ApiConfig {
   static String get baseUrl {
     String url;
     if (kIsWeb) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://localhost:6000';
+      // VPS Backend (Production)
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      // Local Development: 'http://localhost:6000'
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://192.168.1.7:6000';
+      // VPS Backend (Production)
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      // Local Development: 'http://192.168.1.7:6000'
     } else {
       // iOS, Windows, macOS, Linux
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://127.0.0.1:6000';
+      // VPS Backend (Production)
+      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      // Local Development: 'http://127.0.0.1:6000'
     }
     return url;
   }
