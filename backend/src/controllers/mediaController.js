@@ -99,12 +99,11 @@ const uploadImage = async (req, res) => {
     else if (type === 'image') correctFileExtension(req.file, 'image');
     // else file, keep original or detect generic? generic detectFileExtension handles some.
 
-    // **FIX: Use correct folder based on type**
-    let folderPath = 'images'; // default
-    if (type === 'video') folderPath = 'videos';
-    else if (type === 'audio' || type === 'voice') folderPath = 'voice';
+    // **Folder structure: avatars/, images/ (images+videos), voice/, files/**
+    let folderPath = 'images'; // default for images and videos
+    if (type === 'audio' || type === 'voice') folderPath = 'voice';
     else if (type === 'file') folderPath = 'files';
-    // type === 'image' uses default 'images'
+    // type === 'image' and 'video' both use 'images' folder
 
     const filePath = `/uploads/${folderPath}/${req.file.filename}`;
     console.log('   Storage Path:', filePath);
