@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/layout/responsive_layout.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
 import 'package:whatsapp_clone/screens/chat_list_screen.dart';
 import 'package:whatsapp_clone/screens/web_layout_screen.dart';
 
@@ -74,7 +75,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black, // Or purple based on theme, keeping simple
       ),
-      body: Center(
+      body: ResponsiveContainer(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(

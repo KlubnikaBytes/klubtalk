@@ -46,23 +46,23 @@ class ChatService {
   }
 
   // Send Text Message
-  Future<Map<String, dynamic>?> sendMessage(String chatId, String text, {String type = 'text', String? tempId}) async {
+  Future<Map<String, dynamic>?> sendMessage(String chatId, String text, {String type = 'text', String? tempId, String? replyToId}) async {
     // Determine if we should use Socket or REST
     // For reliable Unread Count updates (handled by Backend), we MUST use the REST API.
     // The Backend will handle Socket emission to recipients.
     // Optimistic updates should be handled by the UI layer (ChatScreen) separately.
     
-    return await _sendMessageToBackend(chatId, text, type, tempId: tempId);
+    return await _sendMessageToBackend(chatId, text, type, tempId: tempId, replyToId: replyToId);
   }
 
   // Send Sticker Message
   // Send Sticker Message
-  Future<Map<String, dynamic>> sendStickerMessage(String chatId, String stickerUrl, {String? tempId}) async {
-      return await _sendMessageToBackend(chatId, stickerUrl, 'sticker', tempId: tempId);
+  Future<Map<String, dynamic>> sendStickerMessage(String chatId, String stickerUrl, {String? tempId, String? replyToId}) async {
+      return await _sendMessageToBackend(chatId, stickerUrl, 'sticker', tempId: tempId, replyToId: replyToId);
   }
 
   // Send Voice Message
-  Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds, {String? tempId}) async {
+  Future<void> sendVoiceMessage(String chatId, dynamic fileOrPath, int durationSeconds, {String? tempId, String? replyToId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadVoice(fileOrPath);
@@ -71,7 +71,8 @@ class ChatService {
         previewUrl: mediaData['previewUrl'],
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
-        tempId: tempId
+        tempId: tempId,
+        replyToId: replyToId
       );
     } catch (e) {
       print('Voice Send Error: $e');
@@ -80,7 +81,7 @@ class ChatService {
   }
 
   // Send Image Message
-  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId}) async {
+  Future<void> sendImageMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId, String? replyToId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadImage(fileOrPath, mimeType: mimeType);
@@ -89,7 +90,8 @@ class ChatService {
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
         caption: caption,
-        tempId: tempId
+        tempId: tempId,
+        replyToId: replyToId
       );
     } catch (e) {
       print('Image Send Error: $e');
@@ -98,7 +100,7 @@ class ChatService {
   }
 
   // Send Video Message
-  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId}) async {
+  Future<void> sendVideoMessage(String chatId, dynamic fileOrPath, {String? mimeType, String? caption, String? tempId, String? replyToId}) async {
     try {
       final uploadService = MediaUploadService();
       // Reuse uploadImage/Generic for now as backend handles generic media uploads
@@ -108,7 +110,8 @@ class ChatService {
         originalUrl: mediaData['originalUrl'],
         mime: mediaData['mime'],
         caption: caption,
-        tempId: tempId
+        tempId: tempId,
+        replyToId: replyToId
       );
     } catch (e) {
       print('Video Send Error: $e');
@@ -117,7 +120,7 @@ class ChatService {
   }
 
   // Send File Message
-  Future<void> sendFileMessage(String chatId, dynamic fileOrPath, {String? tempId}) async {
+  Future<void> sendFileMessage(String chatId, dynamic fileOrPath, {String? tempId, String? replyToId}) async {
     try {
       final uploadService = MediaUploadService();
       final mediaData = await uploadService.uploadGenericFile(fileOrPath);
@@ -141,7 +144,8 @@ class ChatService {
         mime: mediaData['mime'],
         filename: mediaData['filename'],
         size: mediaData['size'],
-        tempId: tempId
+        tempId: tempId,
+        replyToId: replyToId
       );
     } catch (e) {
       print('File Send Error: $e');
@@ -161,7 +165,8 @@ class ChatService {
     String? filename,
     int? size,
     String? caption,
-    String? tempId
+    String? tempId,
+    String? replyToId
   }) async {
     try {
       final response = await http.post(
@@ -179,6 +184,7 @@ class ChatService {
           if (size != null) 'size': size,
           if (caption != null && caption.isNotEmpty) 'caption': caption,
           if (tempId != null) 'tempId': tempId,
+          if (replyToId != null) 'replyTo': replyToId,
         }),
       );
 
@@ -205,8 +211,10 @@ class ChatService {
       final cachedChats = await _cache.getCachedChats();
       
       // 2️⃣ Fetch from server in background
+      final url = Uri.parse(ApiConfig.chatsEndpoint);
+      print("Fetching chats from: $url");
       final response = await http.get(
-        Uri.parse(ApiConfig.chatsEndpoint),
+        url,
         headers: await _getHeaders(),
       );
 
@@ -223,6 +231,9 @@ class ChatService {
       }
     } catch (e) {
       print('Error fetching chats: $e');
+      // RELEASE DEBUG: Rethrow to see error in UI
+      rethrow;
+      /*
       // Return cached data on error
       try {
         final cachedChats = await _cache.getCachedChats();
@@ -230,6 +241,7 @@ class ChatService {
       } catch (_) {
         return [];
       }
+      */
     }
   }
 
@@ -442,6 +454,15 @@ class ChatService {
       body: jsonEncode({'chatId': chatId, 'wallpaper': wallpaper}),
     );
     if (response.statusCode != 200) throw Exception('Failed to set theme');
+  }
+
+  Future<void> reactToMessage(String messageId, String reaction) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.messagesEndpoint}/$messageId/react'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'reaction': reaction}),
+    );
+     if (response.statusCode != 200) throw Exception('Failed to add reaction');
   }
 
   Future<void> reportChat(String chatId, {String? reportedUserId, String? reason, bool blockUser = false, bool deleteChat = false, List<Map<String, dynamic>>? lastMessages}) async {

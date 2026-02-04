@@ -20,7 +20,7 @@ class _WebLayoutScreenState extends State<WebLayoutScreen> {
         contact: contact, 
         peerId: peerId, 
         chatId: chatId,
-        // Optional: You might want to hide the back button on web
+        isWeb: true,
       );
     });
   }

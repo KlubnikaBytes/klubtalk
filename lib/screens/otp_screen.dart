@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/layout/responsive_layout.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
 import 'package:whatsapp_clone/screens/chat_list_screen.dart';
 import 'package:whatsapp_clone/screens/web_layout_screen.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
@@ -73,38 +74,42 @@ class _OtpScreenState extends State<OtpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Verify Phone Number')),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            Text(
-              'Waiting to automatically detect an SMS sent to ${widget.phoneNumber}.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _otpController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24, letterSpacing: 5),
-              decoration: const InputDecoration(
-                hintText: '- - - - - -',
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 20),
-            _isLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFC92136),
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: _verifyOtp,
-                    child: const Text('Verify'),
+      body: ResponsiveContainer(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                Text(
+                  'Waiting to automatically detect an SMS sent to ${widget.phoneNumber}.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 24, letterSpacing: 5),
+                  decoration: const InputDecoration(
+                    hintText: '- - - - - -',
+                    counterText: '',
                   ),
-          ],
+                ),
+                const SizedBox(height: 20),
+                _isLoading
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC92136),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: _verifyOtp,
+                        child: const Text('Verify'),
+                      ),
+              ],
+            ),
+          ),
         ),
       ),
     );

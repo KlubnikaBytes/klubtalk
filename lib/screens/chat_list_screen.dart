@@ -594,10 +594,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
           _chats = chats;
           _isLoading = false;
         });
+        
+        // RELEASE DEBUG: Show Success Count
+        ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Debug: Loaded ${chats.length} chats'), duration: const Duration(seconds: 2)),
+        );
       }
-    } catch (e) {
+    } catch (e, stack) {
       print("Error loading chats: $e");
       if (mounted && updateLoading) setState(() => _isLoading = false);
+      
+      // RELEASE DEBUG: Show Error
+      if (mounted) {
+         showDialog(
+           context: context,
+           builder: (context) => AlertDialog(
+             title: const Text("Chat Load Error"),
+             content: SingleChildScrollView(child: Text("Error: $e\n\nStack: $stack")),
+             actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
+             ],
+           )
+         );
+      }
     }
   }
 

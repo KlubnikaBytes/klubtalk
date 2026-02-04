@@ -64,29 +64,39 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // 1. Initialize Hive (Critical for Cache)
+  try {
+    await Hive.initFlutter();
+  } catch (e) {
+    print("❌ Hive Init Failed: $e");
+  }
+
+  // 2. Initialize Firebase (Critical for FCM/Auth verification)
   try {
     await Firebase.initializeApp();
-    
     // Register background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
-    // Initialize Notification Service
-    await NotificationService.initialize();
-    
-    // Initialize FCM Service
-    await FcmService().initialize();
-    
-    // Initialize Hive for local caching
-    await Hive.initFlutter();
-    
-    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    print("❌ Firebase Init Failed: $e");
+  }
 
-    if (kIsWeb) {
-      preventBrowserContextMenu();
-    }
-  } catch (e, stack) {
-    print("❌ CRITICAL INITIALIZATION ERROR: $e");
-    print(stack);
+  // 3. Initialize Services
+  try {
+    await NotificationService.initialize();
+    await FcmService().initialize();
+  } catch (e) {
+    print("❌ Service Init Failed: $e");
+  }
+
+  // 4. Load Environment
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    print("❌ DotEnv Init Failed: $e");
+  }
+
+  if (kIsWeb) {
+    preventBrowserContextMenu();
   }
   
   runApp(const MyApp());
@@ -175,12 +185,18 @@ class _MyAppState extends State<MyApp> {
       title: 'KlubTalk',
       theme: ThemeData(
          primaryColor: const Color(0xFFC92136),
-         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFC92136)),
+         colorScheme: ColorScheme.fromSeed(
+           seedColor: const Color(0xFFC92136),
+           surfaceTint: Colors.transparent, // Disable Material3 tinting
+         ),
          useMaterial3: true,
+         scaffoldBackgroundColor: Colors.white, // Force white base
+         appBarTheme: const AppBarTheme(
+           surfaceTintColor: Colors.transparent, // No tint on AppBar
+           elevation: 0,
+         ),
       ),
       home: const AuthWrapper(),
     );
   }
 }
-
-

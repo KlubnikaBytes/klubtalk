@@ -6,17 +6,25 @@ class ApiConfig {
     String url;
     if (kIsWeb) {
       // VPS Backend (Production)
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
-      // Local Development: 'http://localhost:6000'
+      try {
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      } catch (_) {
+        url = 'http://72.62.73.45:6000'; // Fallback if dotenv not initialized
+      }
     } else if (defaultTargetPlatform == TargetPlatform.android) {
       // VPS Backend (Production)
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
-      // Local Development: 'http://192.168.1.7:6000'
+      try {
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      } catch (_) {
+        url = 'http://72.62.73.45:6000'; // Fallback
+      }
     } else {
       // iOS, Windows, macOS, Linux
-      // VPS Backend (Production)
-      url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
-      // Local Development: 'http://127.0.0.1:6000'
+      try {
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+      } catch (_) {
+        url = 'http://72.62.73.45:6000'; // Fallback
+      }
     }
     return url;
   }

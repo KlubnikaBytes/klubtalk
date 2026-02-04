@@ -7,6 +7,8 @@ import 'package:whatsapp_clone/models/status_model.dart';
 import 'package:whatsapp_clone/services/status_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
+import 'package:whatsapp_clone/services/contact_service.dart';
 
 class StatusViewerScreen extends StatefulWidget {
   final UserStatus userStatus;
@@ -136,7 +138,9 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
              _showViewers(status);
            }
         },
-        child: Stack(
+        child: ResponsiveContainer(
+          maxWidth: 500, // Story view usually narrower
+          child: Stack(
           fit: StackFit.expand,
           children: [
             // Content
@@ -145,15 +149,17 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
             // Text Content Overlay (if text status)
             if (status.type == 'text')
                Center(
-                 child: Padding(
-                   padding: const EdgeInsets.symmetric(horizontal: 40),
-                   child: Text(
-                     status.content,
-                     textAlign: TextAlign.center,
-                     style: TextStyle(
-                        fontSize: 32, 
-                        color: Colors.white,
-                        fontFamily: status.caption, 
+                 child: SingleChildScrollView(
+                   child: Padding(
+                     padding: const EdgeInsets.symmetric(horizontal: 40),
+                     child: Text(
+                       status.content,
+                       textAlign: TextAlign.center,
+                       style: TextStyle(
+                          fontSize: 32, 
+                          color: Colors.white,
+                          fontFamily: status.caption, 
+                       ),
                      ),
                    ),
                  ),
@@ -234,6 +240,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
               )
           ],
         ),
+        ),
       ),
     );
   }
@@ -279,10 +286,16 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
                    itemCount: status.viewers.length,
                    itemBuilder: (context, index) {
                       final viewerId = status.viewers[index];
-                      // Ideally resolve name
-                      return ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.person)),
-                        title: Text("User $viewerId"), // Placeholder
+                      return FutureBuilder<String>(
+                        future: _resolveName(viewerId),
+                        builder: (context, snapshot) {
+                           if (!snapshot.hasData) return const SizedBox(); 
+                           final name = snapshot.data!;
+                           return ListTile(
+                             leading: const CircleAvatar(child: Icon(Icons.person)),
+                             title: Text(name), 
+                           );
+                        },
                       );
                    },
                  ),
@@ -358,6 +371,10 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
            },
          );
       }
+  }
+
+  Future<String> _resolveName(String userId) async {
+      return await ContactService().resolveContactName(userId);
   }
 
   String _formatTime(DateTime time) {

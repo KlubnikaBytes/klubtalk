@@ -84,6 +84,7 @@ router.post('/users/unblock', verifyToken, chatController.unblockUser);
 
 router.post('/messages', verifyToken, chatController.sendMessage);
 router.post('/messages/:messageId/ack', verifyToken, chatController.ackMessage); // 🎯 NEW: ACK Route
+router.post('/messages/:messageId/react', verifyToken, chatController.addReaction); // 🎯 NEW: Reaction Route
 router.get('/messages/:chatId', verifyToken, chatController.getMessages);
 
 // --- HEALTH CHECK ---

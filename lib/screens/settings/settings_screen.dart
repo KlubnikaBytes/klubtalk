@@ -10,6 +10,7 @@ import 'package:whatsapp_clone/screens/settings/help_screen.dart';
 import 'package:whatsapp_clone/screens/settings/avatar_screen.dart';
 import 'package:whatsapp_clone/services/user_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -46,7 +47,10 @@ class SettingsScreen extends StatelessWidget {
                   if (user != null) {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const ProfileEditScreen()),
+                      MaterialPageRoute(builder: (context) => Scaffold(
+                        backgroundColor: const Color(0xFFF0F2F5),
+                        body: ResponsiveContainer(child: const ProfileEditScreen())
+                      )),
                     );
                   }
                 },
@@ -88,7 +92,10 @@ class SettingsScreen extends StatelessWidget {
       subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(color: Colors.grey)) : null,
       onTap: () {
         if (destination != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => destination));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => Scaffold(
+             backgroundColor: const Color(0xFFF0F2F5),
+             body: ResponsiveContainer(child: destination)
+          )));
         } else {
            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$title feature coming soon")));
         }

@@ -438,7 +438,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
            if (matchedContacts.isNotEmpty) {
              listItems.add(const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('Contacts on WhatsApp', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                child: Text('Contacts on KlubTalk', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
              ));
              
              for (var item in matchedContacts) {
@@ -486,7 +486,7 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
            if (inviteContacts.isNotEmpty) {
               listItems.add(const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('Invite to WhatsApp', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                child: Text('Invite to KlubTalk', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
               ));
               for (var c in inviteContacts) {
                  listItems.add(ListTile(

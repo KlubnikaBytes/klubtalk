@@ -4,6 +4,7 @@ import 'package:whatsapp_clone/services/community_service.dart';
 import 'package:whatsapp_clone/screens/communities/community_home_screen.dart';
 import 'package:whatsapp_clone/screens/communities/create_community_screen.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
 
 class MyCommunitiesScreen extends StatefulWidget {
   const MyCommunitiesScreen({super.key});
@@ -48,7 +49,10 @@ class _MyCommunitiesScreenState extends State<MyCommunitiesScreen> {
             const SizedBox(height: 8),
             ElevatedButton(
               onPressed: () {
-                 Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateCommunityScreen())).then((_) => _fetchCommunities());
+                 Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                   backgroundColor: const Color(0xFFF0F2F5),
+                   body: ResponsiveContainer(child: const CreateCommunityScreen())
+                 ))).then((_) => _fetchCommunities());
               },
               child: const Text("Start your community"),
             )
@@ -69,7 +73,10 @@ class _MyCommunitiesScreenState extends State<MyCommunitiesScreen> {
              ),
              title: const Text("New Community"),
              onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateCommunityScreen())).then((_) => _fetchCommunities());
+                Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                   backgroundColor: const Color(0xFFF0F2F5),
+                   body: ResponsiveContainer(child: const CreateCommunityScreen())
+                ))).then((_) => _fetchCommunities());
              },
            );
         }
@@ -83,7 +90,10 @@ class _MyCommunitiesScreenState extends State<MyCommunitiesScreen> {
           title: Text(community.name, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text(community.description.isNotEmpty ? community.description : "No description"),
           onTap: () {
-             Navigator.push(context, MaterialPageRoute(builder: (_) => CommunityHomeScreen(communityId: community.id)));
+             Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                backgroundColor: const Color(0xFFF0F2F5),
+                body: ResponsiveContainer(child: CommunityHomeScreen(communityId: community.id))
+             )));
           },
         );
       },

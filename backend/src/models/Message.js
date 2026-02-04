@@ -16,6 +16,11 @@ const messageSchema = new mongoose.Schema({
         enum: ['sent', 'delivered', 'seen'],
         default: 'sent'
     },
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
+    reactions: [{
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        reaction: { type: String }
+    }],
     createdAt: { type: Date, default: Date.now }
 });
 

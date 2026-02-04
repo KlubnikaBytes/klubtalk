@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:whatsapp_clone/services/notification_service.dart'; 
 import 'package:flutter/material.dart';
 
@@ -44,6 +45,7 @@ class ChatScreen extends StatefulWidget {
   final bool isGroup;
   final String? groupName;
   final String? groupPhoto;
+  final bool isWeb;
 
   const ChatScreen({
     super.key,
@@ -52,7 +54,8 @@ class ChatScreen extends StatefulWidget {
     required this.chatId,
     this.isGroup = false,
     this.groupName, 
-    this.groupPhoto
+    this.groupPhoto,
+    this.isWeb = false,
   });
 
   @override
@@ -72,7 +75,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   bool _isPeerTyping = false; // New typing state
   bool _isPeerOnline = false; // New online state
   bool _isEmojiPickerVisible = false;
-  bool _isStickerPickerVisible = false;
+  bool _isStickerPickerVisible = false; // New state for sticker picker
+  Map<String, dynamic>? _replyMessage; // State for reply context
   Set<String> _blockedUserIds = {};
   
   // Visibility State
@@ -87,8 +91,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   StreamSubscription? _seenSub;
 
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
-
-  Color _backgroundColor = const Color(0xFFECE5DD);
 
   // Search State
   bool _isSearching = false;
@@ -114,6 +116,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     _loadMessages();
     if (widget.isGroup) _loadGroupDetails(); // Load fresh group info
     _checkBlockStatus();
+    // DEBUG: Log initial screen load
+    print("🎨 ChatScreen Init - Using fixed glassmorphism background");
     _checkBlockStatus();
     _setupSocketListeners(); // Listen to socket
     SocketService().joinChat(widget.chatId); // Join Chat Room
@@ -169,34 +173,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-     super.didChangeAppLifecycleState(state);
-     setState(() {
-         _isAppResumed = (state == AppLifecycleState.resumed);
-     });
-     
-     if (_isAppResumed) {
-         print("ChatScreen: App Resumed. Screen Visible: $_isScreenVisible");
-         if (_isScreenVisible) {
-             _markChatAsSeen();
-         }
-     }
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused) {
+      _isAppResumed = false;
+      print("📴 App paused - Keeping socket alive as requested");
+      print("🎨 LIFECYCLE: App paused - _isAppResumed=false");
+    } else if (state == AppLifecycleState.resumed) {
+      _isAppResumed = true;
+      print("🔄 App resumed - reconnecting socket");
+      print("🎨 LIFECYCLE: App resumed - _isAppResumed=true, triggering setState");
+      setState(() {}); // Trigger visibility update
+    }
+    
+    if (_isAppResumed) {
+      print("ChatScreen: App Resumed. Screen Visible: $_isScreenVisible");
+      if (_isScreenVisible) {
+        _markChatAsSeen();
+      }
+    }
   }
 
   @override
   void didPopNext() {
-      // Returning to this screen (top route popped off)
-      print("ChatScreen: didPopNext (Returned to screen)");
-      setState(() => _isScreenVisible = true);
-      if (_isAppResumed) {
-          _markChatAsSeen();
-      }
+    super.didPopNext();
+    print("🎨 ROUTE: Popped back to ChatScreen - _isScreenVisible=true, triggering setState");
+    _isScreenVisible = true;
+    _isAppResumed = true;
+    setState(() {});
+    _markChatAsSeen();
   }
 
   @override
   void didPushNext() {
-      // Pushing a new route on top
-      print("ChatScreen: didPushNext (Covered by another screen)");
-      setState(() => _isScreenVisible = false);
+    super.didPushNext();
+    print("🎨 ROUTE: Pushed away from ChatScreen - _isScreenVisible=false");
+    _isScreenVisible = false;
   }
   
   void _markChatAsSeen() {
@@ -303,6 +314,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
        if (_isPeerBlocked) return; // Don't show online status for blocked users
        if (data['userId'] == widget.peerId) {
           if (mounted) {
+            print("🎨 SOCKET: Online status update - userId=${data['userId']}, isOnline=${data['isOnline']}, triggering setState");
             setState(() {
                _isPeerOnline = data['isOnline'] ?? false;
             });
@@ -324,6 +336,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
        if (data['chatId'] == widget.chatId) {
           if (mounted) {
             print("ChatScreen: Updating seen status for chat"); 
+            print("🎨 SOCKET: Seen status update - chatId=${data['chatId']}, triggering setState");
             setState(() {
               // Mark all my text/media messages as seen
               for (var i = 0; i < _messages.length; i++) {
@@ -337,11 +350,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     });
   }
 
-  // Robust Status Updater
   void _updateMessageStatus({String? messageId, String? tempId, required String status}) {
       if (!mounted) return;
       
       print("ChatScreen: Received status update '$status' for msgId: $messageId, tempId: $tempId");
+      print("🎨 STATUS: Updating message status='$status', msgId=$messageId, tempId=$tempId, triggering setState");
 
       setState(() {
          int index = -1;
@@ -417,11 +430,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
        final blockedList = await _chatService.getBlockedUsers();
         // print("DEBUG: Fetched blocked list: $blockedList");
        
+       // Background color removed - using fixed glassmorphism design
        if (mounted) {
-         setState(() {
-           _blockedUserIds = blockedList.toSet();
-         });
-         // print("DEBUG: Checking if '${widget.peerId}' is in blocked list. Result: $_isPeerBlocked");
+        setState(() {
+          _blockedUserIds = blockedList.toSet();
+        });
+        // print("DEBUG: Checking if '${widget.peerId}' is in blocked list. Result: $_isPeerBlocked");
        }
      } catch (e) {
        print("Failed to check block status: $e");
@@ -520,7 +534,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
         setState(() => _isLoading = true);
       }
       final messages = await _chatService.getMessages(widget.chatId);
-      if (mounted) {
+      if (mounted && updateLoading) {
+        print("🎨 LOAD: Messages loaded successfully - count=${messages.length}, triggering setState");
         setState(() {
           _messages = messages.reversed.toList(); // Store Newest First
           _isLoading = false;
@@ -543,6 +558,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     } catch (e) {
       print('Error loading messages: $e');
       if (mounted && updateLoading) {
+        print("🎨 LOAD: Message loading failed - error=$e, triggering setState");
         setState(() => _isLoading = false);
       }
     }
@@ -556,6 +572,68 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
         curve: Curves.easeOut,
       );
     }
+  }
+
+  // --- Reply & Reaction Helpers ---
+
+  void _onSwipeToReply(Map<String, dynamic> message) {
+     setState(() {
+       _replyMessage = message;
+     });
+     _focusNode.requestFocus();
+  }
+
+  void _cancelReply() {
+    setState(() {
+      _replyMessage = null;
+    });
+  }
+
+  void _showReactionPicker(BuildContext context, Map<String, dynamic> message) {
+      // Simple Dialog for now. Ideally a popup overlay above the message.
+      final reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+      showDialog(
+        context: context, 
+        builder: (ctx) => AlertDialog(
+           contentPadding: const EdgeInsets.all(10),
+           content: Row(
+             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+             children: reactions.map((r) => GestureDetector(
+               onTap: () {
+                 Navigator.pop(ctx);
+                 _handleReaction(message, r);
+               },
+               child: Text(r, style: const TextStyle(fontSize: 28)),
+             )).toList(),
+           ),
+        )
+      );
+  }
+
+  Future<void> _handleReaction(Map<String, dynamic> message, String reaction) async {
+     // Optimistic Update
+     setState(() {
+        if (message['reactions'] == null) message['reactions'] = [];
+        List<dynamic> reactions = message['reactions'];
+        final index = reactions.indexWhere((r) => r['userId'] == AuthService().currentUserId);
+        
+        if (index != -1) {
+           if (reactions[index]['reaction'] == reaction) {
+              reactions.removeAt(index); // Toggle off
+           } else {
+              reactions[index]['reaction'] = reaction; // Update
+           }
+        } else {
+           reactions.add({'userId': AuthService().currentUserId, 'reaction': reaction});
+        }
+     });
+
+     try {
+       await _chatService.reactToMessage(message['_id'], reaction);
+     } catch (e) {
+       print("Reaction failed: $e");
+       // Revert not implemented for brevity, but should be done in robust app
+     }
   }
 
   String _getFullUrl(String path) {
@@ -578,18 +656,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
       'type': 'text',
       'content': text,
       'timestamp': DateTime.now().toIso8601String(),
-      'status': 'sending' 
+      'status': 'sending', 
+      if (_replyMessage != null) 'replyTo': _replyMessage // Store full object for local display
     };
+
+    final replyToId = _replyMessage?['_id'];
 
     setState(() {
       _messages.insert(0, optimisticMessage);
+      _replyMessage = null; // Clear reply after sending
     });
     _scrollToBottom();
     
     try {
       // Use ChatService
       // We pass tempId to help match the socket ack
-      final sentMessage = await _chatService.sendMessage(widget.chatId, text, tempId: tempId);
+      final sentMessage = await _chatService.sendMessage(widget.chatId, text, tempId: tempId, replyToId: replyToId);
       
       // If REST fallback returned a message (socket disconnected case), update our optimistic one
       if (sentMessage != null) {
@@ -902,11 +984,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
               onTap: () {
                 String hex = '#${c.value.toRadixString(16).substring(2)}';
                 _chatService.setChatTheme(widget.chatId, hex);
-                setState(() {
-                  _backgroundColor = c;
-                });
+                // Note: Wallpaper picker disabled in glassmorphism design
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallpaper updated")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallpaper feature disabled in glassmorphism design")));
               },
               child: CircleAvatar(backgroundColor: c, radius: 20),
            )).toList(),
@@ -1112,8 +1192,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
      if (_isPeerBlocked) {
        return Container(
          padding: const EdgeInsets.all(16),
+         margin: const EdgeInsets.all(8),
          alignment: Alignment.center,
-         color: Colors.white,
+         decoration: BoxDecoration(
+           color: Colors.white,
+           borderRadius: BorderRadius.circular(30),
+           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+         ),
          child: GestureDetector(
            onTap: _unblockContact,
            child: RichText(
@@ -1126,71 +1211,137 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
        );
      }
   
-     return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            _isEmojiPickerVisible ? Icons.keyboard : Icons.emoji_emotions_outlined,
-                            color: Colors.grey
-                          ),
-                          onPressed: _toggleEmojiPicker,
-                        ),
-                        IconButton(
-                          icon: Icon(
-                             _isStickerPickerVisible ? Icons.layers : Icons.layers_outlined,
-                             color: Colors.grey
-                          ),
-                          onPressed: _toggleStickerPicker,
-                        ),
-                        Expanded(
-                          child: TextField(
-                              controller: _messageController,
-                              focusNode: _focusNode,
-                              decoration: const InputDecoration(
-                                hintText: 'Message',
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(vertical: 10),
-                              ),
-                            ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.attach_file, color: Colors.grey), 
-                          onPressed: _pickAndSendFile,
-                        ),
-                        if (!_isTyping) IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _pickAndSendMedia),
-                      ],
-                    ),
-                  ),
+     return Column(
+       mainAxisSize: MainAxisSize.min,
+       children: [
+          // Reply Context Preview
+          if (_replyMessage != null)
+             Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                   color: Colors.white.withOpacity(0.9),
+                   borderRadius: BorderRadius.circular(12),
+                   border: Border(left: BorderSide(color: const Color(0xFFC92136), width: 4))
                 ),
-                const SizedBox(width: 5),
-                if (_isTyping)
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: const CircleAvatar(
-                      backgroundColor: Color(0xFFC92136),
-                      radius: 24,
-                      child: Icon(Icons.send, color: Colors.white),
-                    ),
-                  )
-                else
-                  VoiceRecorderWidget(
-                    onRecordingComplete: _handleVoiceRecording,
-                  ),
-              ],
-            ),
-          );
+                child: Row(
+                   children: [
+                      Expanded(
+                        child: Column(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           children: [ 
+                              Text(
+                                "Replying to ${_replyMessage!['senderId'] == AuthService().currentUserId ? 'You' : 'Reviewer'}", // Using 'Reviewer'/Peer name logic ideally
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFC92136))
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _replyMessage!['content'] ?? (_replyMessage!['type'] == 'text' ? 'Text' : 'Media'),
+                                maxLines: 1, 
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.black54)
+                              )
+                           ],
+                        )
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                        onPressed: _cancelReply,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      )
+                   ],
+                )
+             ),
+
+       Container(
+       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+       // Helper: Transparent background requested
+       color: Colors.transparent, 
+       child: Builder(
+         builder: (context) {
+           print("🎨 INPUT FIELD: color=rgba(255,255,255,0.85)");
+           return Row(
+         children: [
+           Expanded(
+             child: Container(
+               decoration: BoxDecoration(
+                 color: Colors.white.withOpacity(0.95),
+                 borderRadius: BorderRadius.circular(30),
+                 border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
+                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+               ),
+               padding: const EdgeInsets.symmetric(horizontal: 6),
+               child: Row(
+                 children: [
+                   IconButton(
+                     icon: Icon(
+                       _isEmojiPickerVisible ? Icons.keyboard : Icons.emoji_emotions_outlined,
+                       color: Colors.grey[700],
+                       size: 24,
+                     ),
+                     onPressed: _toggleEmojiPicker,
+                   ),
+                   IconButton(
+                     icon: Icon(
+                       _isStickerPickerVisible ? Icons.keyboard : Icons.sticky_note_2_outlined,
+                       color: Colors.grey[700],
+                       size: 24,
+                     ),
+                     onPressed: _toggleStickerPicker,
+                   ),
+                   Expanded(
+                     child: TextField(
+                         controller: _messageController,
+                         focusNode: _focusNode,
+                         keyboardType: TextInputType.multiline,
+                         maxLines: null,
+                         style: const TextStyle(fontSize: 16, color: Colors.black87),
+                         decoration: const InputDecoration(
+                           hintText: 'Message',
+                           hintStyle: TextStyle(color: Colors.grey),
+                           border: InputBorder.none,
+                           contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                         ),
+                       ),
+                   ),
+                   IconButton(
+                     icon: Icon(Icons.attach_file, color: Colors.grey[700], size: 24), 
+                     onPressed: _pickAndSendFile,
+                   ),
+                   if (!_isTyping) IconButton(
+                     icon: Icon(Icons.camera_alt, color: Colors.grey[700], size: 24), 
+                     onPressed: _pickAndSendMedia
+                   ),
+                 ],
+               ),
+             ),
+           ),
+           const SizedBox(width: 8),
+           if (_isTyping)
+             GestureDetector(
+               onTap: _sendMessage,
+               child: Container(
+                 decoration: BoxDecoration(
+                   color: const Color(0xFFC92136),
+                   shape: BoxShape.circle,
+                   boxShadow: [
+                     BoxShadow(color: const Color(0xFFC92136).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))
+                   ],
+                 ),
+                 padding: const EdgeInsets.all(12),
+                 child: const Icon(Icons.send, color: Colors.white, size: 24),
+               ),
+             )
+           else
+             VoiceRecorderWidget(
+               onRecordingComplete: _handleVoiceRecording,
+             ),
+         ],
+           );
+         },
+       ),
+     );
   }
 
   // --- SEARCH LOGIC ---
@@ -1311,90 +1462,128 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   }
 
   PreferredSizeWidget _buildNormalAppBar() {
-    return AppBar(
-        titleSpacing: 0,
-        backgroundColor: const Color(0xFFC92136),
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+      if (_isSearching) return _buildSearchBar();
+      
+      String displayName = '';
+      String avatarUrl = '';
+      
+      if (widget.isGroup) {
+         displayName = widget.groupName ?? 'Group';
+         avatarUrl = widget.groupPhoto ?? '';
+      } else {
+         displayName = widget.contact?.name ?? 'User';
+         avatarUrl = widget.contact?.profileImage ?? '';
+      }
+      
+      return AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        toolbarHeight: 70,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+          side: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
-        title: Row(
-          children: [
-            AvatarWidget(
-              imageUrl: _getFullUrl(widget.isGroup ? _displayAvatar : (widget.contact?.profileImage ?? '')), 
-              radius: 18
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                   if (_isPeerBlocked) return; // STEP 4: Profile must vanish
-                   
-                   if (widget.isGroup) {
-                      Navigator.push(context, MaterialPageRoute(builder: (c) => GroupDetailsScreen(chatId: widget.chatId, groupName: widget.groupName ?? 'Group', groupIcon: widget.groupPhoto ?? '')));
-                   } else if (widget.contact != null) {
-Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId, userId: widget.peerId)));
-                   }
-                },
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black87, size: 24),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        title: GestureDetector(
+          onTap: () {
+             if (widget.isGroup) {
+                Navigator.push(
+                   context,
+                   MaterialPageRoute(builder: (context) => GroupDetailsScreen(
+                      chatId: widget.chatId,
+                      groupName: widget.groupName ?? 'Group',
+                      groupIcon: widget.groupPhoto ?? '',
+                   ))
+                );
+             } else if (widget.contact != null) {
+                Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(contact: widget.contact!, peerId: widget.peerId, chatId: widget.chatId, userId: widget.peerId)));
+             }
+          },
+          child: Row(
+            children: [
+              AvatarWidget(
+                imageUrl: avatarUrl,
+                radius: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      widget.isGroup ? _displayName : (widget.contact?.name ?? 'Unknown'), 
-                      style: const TextStyle(fontSize: 18), 
+                      displayName,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87), 
                       overflow: TextOverflow.ellipsis
                     ),
-                    if (!widget.isGroup && widget.contact != null && !_isPeerBlocked) // STEP 3: Kill online/typing status
+                    if (!widget.isGroup && widget.contact != null && !_isPeerBlocked)
                       _isPeerTyping 
-                      ? const Text('Typing...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Color(0xFFC92136))) 
+                      ? const Text('Typing...', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Color(0xFFC92136))) 
                       : Text(_isPeerOnline ? 'Online' : 'Offline', 
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.grey.shade600)),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
-          if (!widget.isGroup && !_isPeerBlocked) ...[ // STEP 2: Hard block calls & video calls
-            IconButton(
-              icon: const Icon(Icons.videocam), 
-              onPressed: () {
-                // Removed Online Check to allow persistent calls (Push Notifications will wake them up)
-                Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (_) => OutgoingCallScreen(
-                      peerName: widget.contact?.name ?? 'Unknown',
-                      peerAvatar: widget.contact?.profileImage ?? '',
-                      peerId: widget.peerId,
-                      isVideo: true,
+          if (!widget.isGroup && !_isPeerBlocked) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFC92136),
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.videocam, color: Colors.white, size: 22), 
+                onPressed: () {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => OutgoingCallScreen(
+                        peerName: widget.contact?.name ?? 'Unknown',
+                        peerAvatar: widget.contact?.profileImage ?? '',
+                        peerId: widget.peerId,
+                        isVideo: true,
+                      )
                     )
-                  )
-                );
-              }
+                  );
+                }
+              ),
             ),
-            IconButton(
-              icon: const Icon(Icons.call), 
-              onPressed: () {
-                // Removed Online Check
-                
-                Navigator.push(
-                  context, 
-                  MaterialPageRoute(
-                    builder: (_) => OutgoingCallScreen(
-                      peerName: widget.contact?.name ?? 'Unknown',
-                      peerAvatar: widget.contact?.profileImage ?? '',
-                      peerId: widget.peerId,
-                      isVideo: false,
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFC92136),
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.call, color: Colors.white, size: 22), 
+                onPressed: () {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => OutgoingCallScreen(
+                        peerName: widget.contact?.name ?? 'Unknown',
+                        peerAvatar: widget.contact?.profileImage ?? '',
+                        peerId: widget.peerId,
+                        isVideo: false,
+                      )
                     )
-                  )
-                );
-              }
+                  );
+                }
+              ),
             ),
           ],
           PopupMenuButton<String>(
+            iconColor: Colors.black87,
             onSelected: (value) {
                switch(value) {
                   case 'view_contact': 
@@ -1527,37 +1716,43 @@ Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(cont
          return _onWillPop();
       },
       child: Scaffold(
-      backgroundColor: _backgroundColor,
+      backgroundColor: const Color(0xFFFBEDEF), // Fixed Opaque Light Pink
       appBar: _isSearching ? _buildSearchBar() : _buildNormalAppBar(),
       body: Column(
         children: [
           Expanded(
-            child: _isLoading 
-                ? const Center(child: CircularProgressIndicator())
-                : GestureDetector(
-                    onTap: () {
-                       _focusNode.unfocus();
-                       setState(() => _isEmojiPickerVisible = false);
-                    },
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
+            child: Container(
+              color: const Color(0xFFFBEDEF), // Fixed Opaque Light Pink
+              child: _isLoading 
+                  ? const Center(child: CircularProgressIndicator())
+                  : GestureDetector(
+                      onTap: () {
+                         _focusNode.unfocus();
+                         setState(() => _isEmojiPickerVisible = false);
+                      },
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
                         final data = _messages[index];
-                        
                         final isMe = data['senderId'] == AuthService().currentUserId;
                         final type = data['type'] ?? 'text';
+                        
                         final content = data['content'] ?? data['text'] ?? '';
                         final mimeType = (data['mimeType'] ?? '').toString().toLowerCase();
                         
                         int duration = 0;
                         if (data['duration'] != null) {
-                             if (data['duration'] is int) duration = data['duration'];
+                             if (data['duration'] is int) duration = (data['duration'] as int);
                              else if (data['duration'] is double) duration = (data['duration'] as double).toInt();
                         }
 
 
+                        // 🧠 MESSAGE CLASSIFICATION LOGIC
+                        Widget bubbleContent;
+                        
+                        // 1. System Messages (No wrapper)
                         if (type == 'system') {
                            return Align(
                              alignment: Alignment.center,
@@ -1572,116 +1767,67 @@ Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(cont
                                child: Text(content, style: const TextStyle(fontSize: 12, color: Colors.black87), textAlign: TextAlign.center),
                              )
                            );
-
                         }
 
+                        // 2. Sticker
                         if (type == 'sticker') {
-                            return Align(
-                               alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                               child: StickerMessageWidget(message: data, isMe: isMe)
-                            );
-                        }
-
-                        return Align(
-                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isMe ? const Color(0xFFC92136) : Colors.white,
-                              borderRadius: BorderRadius.only(
-                                topLeft: const Radius.circular(10),
-                                topRight: const Radius.circular(10),
-                                bottomLeft: isMe ? const Radius.circular(10) : Radius.zero,
-                                bottomRight: isMe ? Radius.zero : const Radius.circular(10),
-                              ),
-                              boxShadow: [
-                                 BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 2, offset: const Offset(0, 1))
-                              ],
-                            ),
-                            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                type == 'voice' || type == 'audio' 
-                                ? AudioMessageBubble(
-                                    key: ValueKey(data['_id']), 
-                                    message: data, // PASS MESSAGE
-                                    audioUrl: content,
-                                    isSender: isMe,
-                                    durationSeconds: duration,
-                                  ) 
-
-                                : Builder(
-                                    builder: (context) {
-                                      // 🧠 MESSAGE CLASSIFICATION LOGIC
-                                      // 1️⃣ CAMERA ICON MEDIA (Photo / Video)
-                                      if ((type == 'image' && !mimeType.startsWith('video')) || mimeType.startsWith('image/')) {
-                                         return MediaBubbleWidget(message: data, isMe: isMe);
-                                      }
-                                      
-                                      if (type == 'video' || mimeType.startsWith('video/')) {
-                                         return MediaBubbleWidget(message: data, isMe: isMe);
-                                      }
-
-                                      // 2️⃣ ATTACHMENT ICON MEDIA (Paperclip)
-                                      if (type == 'file' || type == 'document') { // Removed 'audio' here as it's handled above
-                                         return MediaBubbleWidget(message: data, isMe: isMe);
-                                      }
-                                      
-                                      // Fallbacks
-                                      if (mimeType.startsWith('image')) return MediaBubbleWidget(message: data, isMe: isMe);
-                                      if (mimeType.startsWith('video')) return MediaBubbleWidget(message: data, isMe: isMe);
-                                      
-                                      if (data.containsKey('filename') || data.containsKey('url')) {
-                                         return MediaBubbleWidget(message: data, isMe: isMe);
-                                      }
-
-                                      // Default Text with INLINE Timestamp
-                                      // We wrap text + timestamp in a Stack/Wrap concept
-                                      // 3. New Column Layout (WhatsApp Style)
-                                      return Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                           // Rich Text Content
-                                           Padding(
-                                             padding: const EdgeInsets.only(right: 48, bottom: 4),
-                                             child: _buildHighlightText(
-                                                content, 
-                                                _isSearching ? _searchController.text : '',
-                                                isMe ? Colors.white : Colors.black
-                                              ),
+                            bubbleContent = StickerMessageWidget(message: data, isMe: isMe);
+                        } 
+                        // 3. Media (Image, Video, File)
+                        else if ((type == 'image' && !mimeType.startsWith('video')) || 
+                                       mimeType.startsWith('image/') ||
+                                       type == 'video' || mimeType.startsWith('video/') ||
+                                       type == 'file' || type == 'document' ||
+                                       ((data.containsKey('filename') || data.containsKey('url')) && !['voice', 'audio', 'text'].contains(type))) {
+                           bubbleContent = Padding(
+                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                 child: MediaBubbleWidget(message: data, isMe: isMe)
+                               );
+                        } 
+                        // 4. Standard Text/Audio Bubble
+                        else {
+                           bubbleContent = Container(
+                             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                             decoration: BoxDecoration(
+                               color: isMe ? const Color(0xFFC92136).withOpacity(0.95) : Colors.white.withOpacity(0.95),
+                               borderRadius: BorderRadius.only(
+                                 topLeft: const Radius.circular(20),
+                                 topRight: const Radius.circular(20),
+                                 bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(4),
+                                 bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(20),
+                               ),
+                               border: Border.all(
+                                 color: Colors.white.withOpacity(0.3),
+                                 width: 0.5,
+                               ),
+                               boxShadow: [
+                                 BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))
+                               ],
+                             ),
+                             constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                             child: Column(
+                               crossAxisAlignment: CrossAxisAlignment.end,
+                                 children: [
+                                 type == 'voice' || type == 'audio' 
+                                 ? AudioMessageBubble(
+                                     key: ValueKey(data['_id']), 
+                                     message: data,
+                                     audioUrl: content,
+                                     isSender: isMe,
+                                     durationSeconds: duration,
+                                   ) 
+                                 : Column(
+                                     crossAxisAlignment: CrossAxisAlignment.end,
+                                     children: [
+                                        // Rich Text Content
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 48, bottom: 4),
+                                          child: _buildHighlightText(
+                                             content, 
+                                             _isSearching ? _searchController.text : '',
+                                             isMe ? Colors.white : Colors.black
                                            ),
-                                           const SizedBox(height: 2),
-                                           // Timestamp Row (Bottom Right)
-                                           Row(
-                                             mainAxisSize: MainAxisSize.min,
-                                             mainAxisAlignment: MainAxisAlignment.end,
-                                             children: [
-                                                if (data['expiresAt'] != null)
-                                                    Padding(
-                                                      padding: const EdgeInsets.only(right: 4),
-                                                      child: Icon(Icons.timer_outlined, size: 10, color: isMe ? Colors.white70 : Colors.grey[600]),
-                                                    ),
-                                                  Text(
-                                                    DateFormat('h:mm a').format(
-                                                       DateTime.parse(data['timestamp'] ?? data['createdAt'] ?? DateTime.now().toIso8601String()).toLocal()
-                                                    ),
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: isMe ? Colors.white70 : Colors.grey[600],
-                                                    ),
-                                                  ),
-                                                  if (isMe) ...[
-                                                    const SizedBox(width: 4),
-                                                    Icon(
-                                                      (data['status'] == 'seen' || data['status'] == 'delivered') 
-                                                          ? Icons.done_all 
-                                                          : Icons.done,
-                                                      size: 14, 
-                                                      color: data['status'] == 'seen' 
-                                                          ? const Color(0xFF53BDEB) 
-                                                          : Colors.white70
                                                     )
                                                   ]
                                              ],
@@ -1691,62 +1837,146 @@ Navigator.push(context, MaterialPageRoute(builder: (c) => ContactInfoScreen(cont
                                     }
                                   ),
                                   // Removed external SizedBox and Row for timestamp
-                                ],
-                              ),
-                          ),
+                           ),
+                         );
+                        }
+
+                        // WRAPPER: Swipe to Reply & Reactions
+                        return Dismissible(
+                           key: ValueKey(data['_id'] ?? data['tempId'] ?? DateTime.now().toIso8601String()),
+                           direction: DismissDirection.startToEnd,
+                           confirmDismiss: (direction) async {
+                              _onSwipeToReply(data);
+                              return false; // Don't actually dismiss
+                           },
+                           background: Container(
+                             alignment: Alignment.centerLeft,
+                             padding: const EdgeInsets.only(left: 20),
+                             child: Icon(Icons.reply, color: Colors.grey[700]), 
+                           ),
+                           child: GestureDetector(
+                              onLongPress: () => _showReactionPicker(context, data),
+                              child: Align(
+                                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                     Column(
+                                       crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                       children: [
+                                          // REPLIED CONTEXT (Above Bubble)
+                                          if (data['replyTo'] != null)
+                                            Container(
+                                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withOpacity(0.05),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border(left: BorderSide(color: const Color(0xFFC92136), width: 3))
+                                              ),
+                                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                    Text("Replied to", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFC92136))),
+                                                    Text(
+                                                      data['replyTo']['content'] ?? 'Media',
+                                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(fontSize: 12, color: Colors.black87)
+                                                    )
+                                                ]
+                                              )
+                                            ),
+
+                                          // MAIN BUBBLE
+                                          bubbleContent,
+                                       ]
+                                     ),
+
+                                     // REACTIONS (Pill at bottom)
+                                     if (data['reactions'] != null && (data['reactions'] as List).isNotEmpty)
+                                       Positioned(
+                                          bottom: -8,
+                                          right: isMe ? 20 : null,
+                                          left: isMe ? null : 20,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(20),
+                                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
+                                              border: Border.all(color: Colors.grey.withOpacity(0.2))
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: (data['reactions'] as List).take(4).map<Widget>((r) {
+                                                  return Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 1.0),
+                                                    child: Text(r['reaction'] ?? '', style: const TextStyle(fontSize: 12)),
+                                                  );
+                                              }).toList(),
+                                            )
+                                          )
+                                       )
+                                  ]
+                                )
+                              )
+                           )
                         );
-                      },
-                    ),
-                ),
+                        },
+                      ),
+                  ),
+            ),
           ),
           
           _buildMessageInput(),
 
-            if (_isEmojiPickerVisible)
-            SizedBox(
-              height: 250,
-              child: EmojiPicker(
-                textEditingController: _messageController,
-                config: Config(
-                   height: 250,
-                   checkPlatformCompatibility: true,
-                   searchViewConfig: const SearchViewConfig(
-                      backgroundColor: Color(0xFFF2F2F2),
-                      buttonIconColor: Color(0xFF9575CD),
-                   ),
-                   emojiViewConfig: EmojiViewConfig(
-                      backgroundColor: const Color(0xFFF2F2F2),
-                      emojiSizeMax: 32 * (PlatformHelper.isIOS ? 1.30 : 1.0),
-                   ),
-                   categoryViewConfig: const CategoryViewConfig(
-                      backgroundColor: Color(0xFFF2F2F2),
-                      indicatorColor: Color(0xFF9575CD),
-                      iconColor: Colors.grey,
-                      iconColorSelected: Color(0xFF9575CD),
-                      backspaceColor: Color(0xFF9575CD),
-                   ),
-                   bottomActionBarConfig: const BottomActionBarConfig(
-                      backgroundColor: Color(0xFFF2F2F2),
-                      buttonColor: Color(0xFFF2F2F2),
-                      buttonIconColor: Color(0xFF9575CD),
-                   ),
-                   skinToneConfig: const SkinToneConfig(
-                      indicatorColor: Color(0xFF9575CD),
-                      dialogBackgroundColor: Colors.white,
-                   ),
-                ),
-              ),
-            ),
-            
-            if (_isStickerPickerVisible)
-              SizedBox(
-                height: 250,
-                child: StickerPickerWidget(
-                   onStickerSelected: _sendSticker
-                )
-              ),
-        ],
+             if (_isEmojiPickerVisible)
+             SizedBox(
+               height: 250,
+               child: EmojiPicker(
+                 textEditingController: _messageController,
+                 config: Config(
+                    height: 250,
+                    checkPlatformCompatibility: true,
+                    searchViewConfig: const SearchViewConfig(
+                       backgroundColor: Color(0xFFF2F2F2),
+                       buttonIconColor: Color(0xFF9575CD),
+                    ),
+                    emojiViewConfig: EmojiViewConfig(
+                       backgroundColor: const Color(0xFFF2F2F2),
+                       emojiSizeMax: 32 * (PlatformHelper.isIOS ? 1.30 : 1.0),
+                    ),
+                    categoryViewConfig: const CategoryViewConfig(
+                       backgroundColor: Color(0xFFF2F2F2),
+                       indicatorColor: Color(0xFF9575CD),
+                       iconColor: Colors.grey,
+                       iconColorSelected: Color(0xFF9575CD),
+                       backspaceColor: Color(0xFF9575CD),
+                    ),
+                    bottomActionBarConfig: const BottomActionBarConfig(
+                       backgroundColor: Color(0xFFF2F2F2),
+                       buttonColor: Color(0xFFF2F2F2),
+                       buttonIconColor: Color(0xFF9575CD),
+                    ),
+                    skinToneConfig: const SkinToneConfig(
+                       indicatorColor: Color(0xFF9575CD),
+                       dialogBackgroundColor: Colors.white,
+                    ),
+                 ),
+               ),
+             ),
+             
+             if (_isStickerPickerVisible)
+               SizedBox(
+                 height: 250,
+                 child: StickerPickerWidget(
+                    onStickerSelected: _sendSticker
+                 )
+               ),
+          ],
+        ),
       ),
-      ));
-  }
+    );
+   }
 }

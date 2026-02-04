@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/screens/otp_screen.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/widgets/responsive_container.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,61 +56,70 @@ class _LoginScreenState extends State<LoginScreen> {
         title: const Text('Enter Your Phone Number'),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black, // or purple
+        foregroundColor: Colors.black,
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
-        child: Column(
-          children: [
-            const Text(
-              'KlubTalk will need to verify your phone number.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                const SizedBox(
-                  width: 60,
-                  child: TextField(
-                    enabled: false,
-                    decoration: InputDecoration(
-                       hintText: '+91',
-                       contentPadding: EdgeInsets.all(8),
+      body: ResponsiveContainer(
+        child: CustomScrollView(
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
+                child: Column(
+                  children: [
+                    const Text(
+                      'KlubTalk will need to verify your phone number.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 60,
+                          child: TextField(
+                            enabled: false,
+                            decoration: InputDecoration(
+                               hintText: '+91',
+                               contentPadding: EdgeInsets.all(8),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            maxLength: 10,
+                            decoration: const InputDecoration(
+                              hintText: 'phone number',
+                              counterText: '', 
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      width: 90, 
+                      child: _isLoading
+                       ? const CircularProgressIndicator()
+                       : ElevatedButton(
+                           style: ElevatedButton.styleFrom(
+                             backgroundColor: const Color(0xFFC92136),
+                             foregroundColor: Colors.white,
+                           ),
+                           onPressed: _verifyPhone,
+                           child: const Text('NEXT'),
+                         ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 10,
-                    decoration: const InputDecoration(
-                      hintText: 'phone number',
-                      counterText: '', // Hide length counter
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-             const Spacer(),
-             SizedBox(
-               width: 90, 
-               child: _isLoading
-                ? const CircularProgressIndicator()
-                : ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFC92136),
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: _verifyPhone,
-                    child: const Text('NEXT'),
-                  ),
-             ),
-             const SizedBox(height: 40),
           ],
         ),
       ),

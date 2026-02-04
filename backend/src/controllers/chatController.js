@@ -119,6 +119,7 @@ exports.getMessages = async (req, res) => {
         const { chatId } = req.params;
         const { page = 1, limit = 50 } = req.query;
         const messages = await Message.find({ chatId })
+            .populate('replyTo', 'content type senderId mediaUrl previewUrl filename')
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
@@ -161,7 +162,8 @@ const { getIO } = require('../socket'); // Import socket helper
 
 exports.sendMessage = async (req, res) => {
     try {
-        const { chatId, content, type, mediaUrl, tempId, mime, mimeType, filename, size, previewUrl, originalUrl } = req.body;
+        const { chatId, content, type, mediaUrl, tempId, mime, mimeType, filename, size, previewUrl, originalUrl, replyTo } = req.body;
+
 
         // 1. Check Block Status
         const chat = await Chat.findById(chatId);
@@ -191,7 +193,8 @@ exports.sendMessage = async (req, res) => {
             content,
             type: type || 'text',
             mediaUrl,
-            status: 'sent'
+            status: 'sent',
+            replyTo: replyTo || null
         };
 
         // Add optional media fields if present
@@ -311,6 +314,49 @@ exports.ackMessage = async (req, res) => {
             }
         }
         res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// 🎯 NEW: Add Reaction
+exports.addReaction = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { reaction } = req.body;
+
+        const message = await Message.findById(messageId);
+        if (!message) return res.status(404).json({ error: "Message not found" });
+
+        // Remove existing reaction by me
+        const existingIndex = message.reactions.findIndex(r => r.userId.toString() === req.uid);
+        if (existingIndex !== -1) {
+            message.reactions.splice(existingIndex, 1);
+        }
+
+        // Add new reaction if it's not null/empty (toggle off if sending same? or just add)
+        // Usually clicking same = toggle off. Clicking new = replace.
+        // Let's assume frontend handles toggle logic or sends null to remove.
+        if (reaction) {
+            message.reactions.push({ userId: req.uid, reaction });
+        }
+
+        await message.save();
+
+        // Socket Emit
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            io.to(message.chatId.toString()).emit('message_reaction', {
+                messageId,
+                chatId: message.chatId,
+                userId: req.uid,
+                reaction: reaction,
+                reactions: message.reactions // Send full list or just delta? sending full list is safer
+            });
+        } catch (sErr) { console.log("Socket emit failed in Reaction:", sErr); }
+
+        res.json({ success: true, reactions: message.reactions });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
