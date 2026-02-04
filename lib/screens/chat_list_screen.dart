@@ -4,7 +4,7 @@ import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/services/contact_service.dart'; // Import ContactService
-import 'package:whatsapp_clone/screens/chat_screen.dart';
+import 'package:whatsapp_clone/screens/chat_screen.dart' hide SizedBox;
 import 'package:whatsapp_clone/screens/new_chat_screen.dart';
 import 'package:whatsapp_clone/screens/group_participant_select_screen.dart';
 import 'package:whatsapp_clone/screens/settings/settings_screen.dart';

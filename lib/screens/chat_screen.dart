@@ -1253,7 +1253,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                    ],
                 )
              ),
-
        Container(
        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
        // Helper: Transparent background requested
@@ -1341,7 +1340,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
            );
          },
        ),
-     );
+     ),
+     ],
+    );
   }
 
   // --- SEARCH LOGIC ---
@@ -1808,7 +1809,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                              child: Column(
                                crossAxisAlignment: CrossAxisAlignment.end,
-                                 children: [
+                               children: [
                                  type == 'voice' || type == 'audio' 
                                  ? AudioMessageBubble(
                                      key: ValueKey(data['_id']), 
@@ -1817,28 +1818,40 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                                      isSender: isMe,
                                      durationSeconds: duration,
                                    ) 
-                                 : Column(
-                                     crossAxisAlignment: CrossAxisAlignment.end,
+                                 : Wrap(
+                                     alignment: WrapAlignment.end,
+                                     crossAxisAlignment: WrapCrossAlignment.end,
                                      children: [
-                                        // Rich Text Content
+                                        _buildHighlightText(
+                                           content, 
+                                           _isSearching ? _searchController.text : '',
+                                           isMe ? Colors.white : Colors.black
+                                         ),
                                         Padding(
-                                          padding: const EdgeInsets.only(right: 48, bottom: 4),
-                                          child: _buildHighlightText(
-                                             content, 
-                                             _isSearching ? _searchController.text : '',
-                                             isMe ? Colors.white : Colors.black
-                                           ),
-                                                    )
-                                                  ]
-                                             ],
-                                           )
-                                        ],
-                                      );
-                                    }
-                                  ),
-                                  // Removed external SizedBox and Row for timestamp
-                           ),
-                         );
+                                          padding: const EdgeInsets.only(left: 8, top: 4),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                DateFormat('hh:mm a').format(DateTime.tryParse(data['timestamp'].toString()) ?? DateTime.now()),
+                                                style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.black54),
+                                              ),
+                                              if (isMe) ...[
+                                                const SizedBox(width: 4),
+                                                Icon(
+                                                  data['status'] == 'seen' ? Icons.done_all : (data['status'] == 'delivered' ? Icons.done_all : Icons.done),
+                                                  size: 14,
+                                                  color: data['status'] == 'seen' ? const Color(0xFF53BDEB) : Colors.white70,
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                     ]
+                                   )
+                               ],
+                             )
+                           );
                         }
 
                         // WRAPPER: Swipe to Reply & Reactions
@@ -1932,7 +1945,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
           _buildMessageInput(),
 
              if (_isEmojiPickerVisible)
-             SizedBox(
+             Container(
                height: 250,
                child: EmojiPicker(
                  textEditingController: _messageController,
@@ -1968,7 +1981,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
              ),
              
              if (_isStickerPickerVisible)
-               SizedBox(
+               Container(
                  height: 250,
                  child: StickerPickerWidget(
                     onStickerSelected: _sendSticker

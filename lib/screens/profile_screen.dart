@@ -3,6 +3,9 @@ import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/models/project_models.dart' as model; // Alias to avoid conflict if any
 import 'package:whatsapp_clone/services/user_service.dart';
+import 'package:image_cropper/image_cropper.dart'; // Import Image Cropper
+import 'package:whatsapp_clone/screens/settings/filter_screen.dart'; // Import FilterScreen
+import 'dart:io'; // Import File
 
 class ProfileScreen extends StatefulWidget {
   final model.User user;
@@ -32,9 +35,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!_isMe || _isUploading) return;
 
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     
-    if (image == null) return;
+    if (pickedFile == null) return;
+
+    // 1. CROP & ROTATE
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: pickedFile.path,
+      aspectRatioPresets: [
+        CropAspectRatioPreset.square,
+        CropAspectRatioPreset.original,
+        CropAspectRatioPreset.ratio3x2,
+        CropAspectRatioPreset.ratio4x3,
+        CropAspectRatioPreset.ratio16x9
+      ],
+      uiSettings: [
+        AndroidUiSettings(
+            toolbarTitle: 'Edit Photo',
+            toolbarColor: const Color(0xFF075E54),
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false),
+        IOSUiSettings(
+          title: 'Edit Photo',
+        ),
+      ],
+    );
+
+    if (croppedFile == null) return;
+
+    // 2. FILTER
+    if (!mounted) return;
+    final Map? filteredImageMap = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FilterScreen(imagePath: croppedFile.path),
+      ),
+    );
+
+    if (filteredImageMap == null || !filteredImageMap.containsKey('image_filtered')) return;
+    
+    final File imageToUpload = filteredImageMap['image_filtered'];
 
     setState(() => _isUploading = true);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading profile photo...')));
@@ -42,7 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final userService = UserService();
       // updateProfilePhoto handles upload AND backend update
-      final newUrl = await userService.updateProfilePhoto(image.path);
+      final newUrl = await userService.updateProfilePhoto(imageToUpload.path);
 
       setState(() {
         _avatarUrl = newUrl;
