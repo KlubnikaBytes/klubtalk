@@ -17,18 +17,18 @@ class MyApplication : Application() {
         Log.d("MyApplication", "🚀 Application onCreate")
         
         // Create a background FlutterEngine for use by background isolates
-        backgroundEngine = FlutterEngine(this)
-        backgroundEngine.dartExecutor.executeDartEntrypoint(
-            DartExecutor.DartEntrypoint.createDefault()
-        )
+        // backgroundEngine = FlutterEngine(this)
+        // backgroundEngine.dartExecutor.executeDartEntrypoint(
+        //    DartExecutor.DartEntrypoint.createDefault()
+        // )
         
         // Cache it so FCM background handler can use it
-        FlutterEngineCache.getInstance().put("background_engine", backgroundEngine)
+        // FlutterEngineCache.getInstance().put("background_engine", backgroundEngine)
         
         // Register MethodChannel for sending broadcasts
-        setupBroadcastChannel(backgroundEngine)
+        // setupBroadcastChannel(backgroundEngine)
         
-        Log.d("MyApplication", "✅ Background engine setup complete")
+        Log.d("MyApplication", "✅ Background engine setup SKIPPED (Debugging crash)")
     }
     
     private fun setupBroadcastChannel(engine: FlutterEngine) {

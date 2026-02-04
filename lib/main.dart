@@ -63,30 +63,30 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  
-  // Register background handler
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  
-  // Initialize Notification Service
-  await NotificationService.initialize();
-  
-  // Initialize FCM Service
-  await FcmService().initialize();
-  
-  // Initialize Hive for local caching
-  await Hive.initFlutter();
   
   try {
+    await Firebase.initializeApp();
+    
+    // Register background handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    
+    // Initialize Notification Service
+    await NotificationService.initialize();
+    
+    // Initialize FCM Service
+    await FcmService().initialize();
+    
+    // Initialize Hive for local caching
+    await Hive.initFlutter();
+    
     await dotenv.load(fileName: ".env");
 
     if (kIsWeb) {
       preventBrowserContextMenu();
     }
-  } catch (e) {
-    if (kDebugMode) {
-      print("Initialization error: $e");
-    }
+  } catch (e, stack) {
+    print("❌ CRITICAL INITIALIZATION ERROR: $e");
+    print(stack);
   }
   
   runApp(const MyApp());
