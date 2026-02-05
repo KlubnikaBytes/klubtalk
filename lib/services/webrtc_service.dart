@@ -189,10 +189,10 @@ class WebrtcService {
   }
 
   // Track pending acceptance
-  bool _pendingAutoAccept = false;
+  bool pendingAutoAccept = false;
 
   void setPendingAutoAccept(bool value) {
-     _pendingAutoAccept = value;
+     pendingAutoAccept = value;
   }
 
   // Handle Incoming Call 
@@ -218,14 +218,14 @@ class WebrtcService {
         final offerMap = data['offer'];
         if (offerMap == null || offerMap == '{}') { // Handle empty json string
             // Missing offer (Notification Payload too small)
-            print("⚠️ handleIncomingCall: Missing Offer! Setting _pendingAutoAccept = true and Waiting for Socket...");
+            print("⚠️ handleIncomingCall: Missing Offer! Setting pendingAutoAccept = true and Waiting for Socket...");
             setPendingAutoAccept(true);
             onCallStateChange?.call("Connecting..."); // Show connecting while waiting
             return;
         }
         
         // If we have offer, proceed normally
-        await _processIncomingOffer(offerMap, video);
+        await processIncomingOffer(offerMap, video);
         
       } catch (e) {
         print("Error handling incoming call: $e");
@@ -235,7 +235,7 @@ class WebrtcService {
   }
 
   // Helper to process offer once available
-  Future<void> _processIncomingOffer(dynamic offerMap, bool video) async {
+  Future<void> processIncomingOffer(dynamic offerMap, bool video) async {
        print("✅ processing Incoming Offer...");
        if (offerMap is String) {
           offerMap = jsonDecode(offerMap); // Handle stringified offer
@@ -255,7 +255,7 @@ class WebrtcService {
         
         _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         
-        if (!_isCallActive && !_pendingAutoAccept) { 
+        if (!_isCallActive && !pendingAutoAccept) { 
            // NOTE: _isCallActive might be false initially, but if pending, we continue?
            // Actually call screen sets active.
         }
@@ -285,7 +285,7 @@ class WebrtcService {
         
         onCallStateChange?.call("Connecting...");
         _callStartTime = DateTime.now(); 
-        _pendingAutoAccept = false; // Reset
+        pendingAutoAccept = false; // Reset
   }
   
   // ... (handleAnswer, handleCandidate unchanged) ...

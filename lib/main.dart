@@ -148,9 +148,9 @@ class _MyAppState extends State<MyApp> {
               // 🔍 COLD START CHECK:
               // If WebrtcService is waiting for this offer (auto-accept from notification),
               // we process it immediately and DO NOT show Incoming Call Screen.
-              if (WebrtcService()._pendingAutoAccept) {
+              if (WebrtcService().pendingAutoAccept) {
                  print("🚀 Auto-Accepting Call (Cold Start)...");
-                 WebrtcService()._processIncomingOffer(data['offer'], data['callType'] == 'video');
+                 WebrtcService().processIncomingOffer(data['offer'], data['callType'] == 'video');
                  return;
               }
 
