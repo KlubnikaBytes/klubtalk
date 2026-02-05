@@ -135,7 +135,7 @@ class _MyAppState extends State<MyApp> {
       socketService.connect();
 
       // Listen to Call Events
-      socketService.callStream.listen((event) {
+      socketService.callStream.listen((event) async { // Made async
           if (event['event'] == 'video_call_request') {
              // Guard: Prevent duplicate calls
              if (WebrtcService().isCallActive) {
@@ -152,12 +152,16 @@ class _MyAppState extends State<MyApp> {
               if (WebrtcService().pendingAutoAccept) {
                  print("🚀 Auto-Accepting Call (Cold Start)...");
                  final isVideo = data['callType'] == 'video';
-                 WebrtcService().processIncomingOffer(data['offer'], isVideo);
+                 
+                 // Call full handleIncomingCall with complete data (now includes offer)
+                 // This will do all necessary initialization - AWAIT to ensure ready
+                 await WebrtcService().handleIncomingCall(data);
                  
                  // 🧭 NAVIGATE TO ACTIVE CALL SCREEN from Cold Start
                  if (navigatorKey.currentState != null) {
-                    print("🧭 Navigating to CallScreen (Cold Start Fixed)...");
-                    navigatorKey.currentState!.pushReplacement(
+                    print("🧭 Navigating to CallScreen (Cold Start - initialization complete)...");
+                    // Use push instead of pushReplacement so user can return
+                    navigatorKey.currentState!.push(
                       MaterialPageRoute(
                         builder: (_) => CallScreen(
                           peerName: "User ${data['from']?.toString().substring(0, 5) ?? 'Unknown'}...",

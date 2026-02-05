@@ -194,9 +194,11 @@ class NotificationService {
   static Future<void> _handleNotificationResponse(NotificationResponse response) async {
          final payload = response.payload;
          final actionId = response.actionId;
+         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
          print("🔍 DEBUG ACTION: _handleNotificationResponse fired");
-         print("🔍 DEBUG ACTION: Action ID: $actionId");
+         print("🔍 DEBUG ACTION: Action ID: '$actionId'");
          print("🔍 DEBUG ACTION: Payload: $payload");
+         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
          
          // 🛑 Stop Ringtone in all cases of interaction
          await cancelCallNotification();
@@ -204,12 +206,28 @@ class NotificationService {
          if (payload != null && payload.startsWith('CALL_DATA:')) {
             try {
                final jsonStr = payload.substring('CALL_DATA:'.length);
+               print("🔍 DEBUG ACTION: JSON String: $jsonStr");
+               
                final callData = json.decode(jsonStr) as Map<String, dynamic>;
-               final callerId = callData['from'];
+               print("🔍 DEBUG ACTION: Parsed callData: $callData");
+               print("🔍 DEBUG ACTION: callData keys: ${callData.keys.toList()}");
+               
+               // Fix: FCM uses 'callerId', socket uses 'from'
+               final callerId = callData['callerId'] ?? callData['from'];
+               print("🔍 DEBUG ACTION: Extracted callerId: '$callerId'");
 
                if (actionId == 'DECLINE') {
-                  print("🔻 DEBUG ACTION: executing DECLINE");
-                  WebrtcService().rejectCall(callerId);
+                  print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                  print("🔻 DEBUG ACTION: DECLINE BUTTON PRESSED!");
+                  print("🔻 DEBUG ACTION: Calling rejectCall with callerId: '$callerId'");
+                  print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                  
+                  if (callerId == null || callerId.isEmpty) {
+                     print("❌ ERROR: callerId is null or empty! Cannot reject call.");
+                  } else {
+                     WebrtcService().rejectCall(callerId);
+                     print("✅ rejectCall() executed");
+                  }
                } 
                else if (actionId == 'ACCEPT') {
                   print("✅ DEBUG ACTION: executing ACCEPT");
@@ -231,15 +249,18 @@ class NotificationService {
                      );
                   } else {
                      print("❌ DEBUG ACTION: Context is NULL, cannot navigate");
-                     // Optional: Store pending action to check in main.dart?
                   }
                } else {
-                  print("⚠️ DEBUG ACTION: Unknown Action ID or Body Tap");
+                  print("⚠️ DEBUG ACTION: Unknown Action ID or Body Tap (actionId was: '$actionId')");
                }
-            } catch (e) {
+            } catch (e, stackTrace) {
                print("❌ DEBUG ACTION: Error parsing payload: $e");
+               print("❌ Stack trace: $stackTrace");
             }
+         } else {
+            print("⚠️ DEBUG ACTION: Payload is null or doesn't start with CALL_DATA:");
          }
+         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   }
 
   /// Handle remote message (foreground & background)

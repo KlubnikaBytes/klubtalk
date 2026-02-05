@@ -184,8 +184,15 @@ class WebrtcService {
   
   // Clean Rejection Helper
   void rejectCall(String to) {
+     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+     print("🔻 WebrtcService.rejectCall() called");
+     print("🔻 Rejecting call to: '$to'");
+     print("🔻 Emitting 'video_call_reject' socket event");
      SocketService().emit('video_call_reject', {'to': to});
+     print("🔻 Socket event emitted, now calling endCall()");
      endCall();
+     print("🔻 rejectCall() complete");
+     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   }
 
   // Track pending acceptance
