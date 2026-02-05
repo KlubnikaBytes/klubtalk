@@ -1,4 +1,5 @@
 import 'dart:typed_data'; // Added for Int64List
+import 'dart:convert'; // Added for JSON
 import 'package:flutter/material.dart'; // Added for Color
 import 'package:flutter/services.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -6,6 +7,18 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Added
 import 'package:permission_handler/permission_handler.dart'; // Added
 import 'package:android_intent_plus/android_intent.dart'; // For fallback broadcast
+import 'package:whatsapp_clone/services/webrtc_service.dart';
+import 'package:whatsapp_clone/screens/call/call_screen.dart';
+import 'package:whatsapp_clone/main.dart'; // For navigatorKey
+
+// Top-level function for background execution
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse notificationResponse) async {
+  print('🔍 DEBUG ACTION: background handler fired');
+  print('🔍 DEBUG ACTION: Background Action: ${notificationResponse.actionId}');
+  // Note: We can try to handle logic here, but UI navigation requires context.
+  // Often, clicking an action brings app to foreground, so handle in initialize ref is better.
+}
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _fln = 
@@ -23,25 +36,7 @@ class NotificationService {
       print("📞 Showing Call Notification: $callerName ($callType)");
 
       // 🎵 START RINGTONE via BroadcastReceiver
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final String ringtoneUri = prefs.getString('call_ringtone') ?? '';
-        
-        print("🔍 Sending broadcast to start ringtone with URI: $ringtoneUri");
-        
-        // Send broadcast to CallNotificationReceiver (works from background!)
-        final intent = AndroidIntent(
-          action: 'com.example.whatsapp_clone.CALL_INCOMING',
-          package: 'com.example.whatsapp_clone',
-          arguments: <String, dynamic>{'ringtone_uri': ringtoneUri},
-          flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
-        );
-        await intent.sendBroadcast();
-        
-        print("✅ Ringtone broadcast sent successfully");
-      } catch (e) {
-        print("❌ ERROR sending broadcast: $e");
-      }
+      await startRingtone();
 
       await _fln.show(
         id,
@@ -79,8 +74,9 @@ class NotificationService {
             timeoutAfter: 60000, // 60s timeout
           ),
         ),
-        // Payload: type_callId_callerId_callType
-        payload: 'call_${data['callId']}_${callerId}_$callType',
+        // Payload: Store FULL JSON data so we can handle Accept/Decline
+        // Usage: CALL_DATA:{json_string}
+        payload: 'CALL_DATA:${jsonEncode(data)}',
       );
   }
 
@@ -113,12 +109,8 @@ class NotificationService {
     
     await _fln.initialize(
       const InitializationSettings(android: androidSettings),
-      onDidReceiveNotificationResponse: (NotificationResponse response) async {
-         final payload = response.payload;
-         print("🔔 Notification Action Clicked: ${response.actionId} (Payload: $payload)");
-         // Just cancel notification so it clears. App is already brought to front by OS.
-         await cancelCallNotification();
-      },
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
     // Check if app was launched by notification
@@ -127,9 +119,14 @@ class NotificationService {
             await _fln.getNotificationAppLaunchDetails();
             
         if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
-             print("🚀 App launched via Notification: ${launchDetails.notificationResponse?.payload}");
-             // Clear notification
-             await cancelCallNotification();
+             print("🚀 App launched via Notification Payload: ${launchDetails.notificationResponse?.payload}");
+             print("🚀 App launched via Notification Action: ${launchDetails.notificationResponse?.actionId}");
+
+             final response = launchDetails.notificationResponse;
+             if (response != null) {
+                // Handle the action that launched the app (Accept/Decline)
+                await _handleNotificationResponse(response);
+             }
         }
     } catch (e) {
         print("Error checking launch details: $e");
@@ -191,6 +188,58 @@ class NotificationService {
         );
         
     print('✅ NotificationService initialized');
+  }
+
+  /// Helper to handle notification taps (foreground & launch)
+  static Future<void> _handleNotificationResponse(NotificationResponse response) async {
+         final payload = response.payload;
+         final actionId = response.actionId;
+         print("🔍 DEBUG ACTION: _handleNotificationResponse fired");
+         print("🔍 DEBUG ACTION: Action ID: $actionId");
+         print("🔍 DEBUG ACTION: Payload: $payload");
+         
+         // 🛑 Stop Ringtone in all cases of interaction
+         await cancelCallNotification();
+
+         if (payload != null && payload.startsWith('CALL_DATA:')) {
+            try {
+               final jsonStr = payload.substring('CALL_DATA:'.length);
+               final callData = json.decode(jsonStr) as Map<String, dynamic>;
+               final callerId = callData['from'];
+
+               if (actionId == 'DECLINE') {
+                  print("🔻 DEBUG ACTION: executing DECLINE");
+                  WebrtcService().rejectCall(callerId);
+               } 
+               else if (actionId == 'ACCEPT') {
+                  print("✅ DEBUG ACTION: executing ACCEPT");
+                  // Trigger WebRTC Accept
+                  await WebrtcService().handleIncomingCall(callData);
+                  
+                  // Navigate to Call Screen
+                  final context = navigatorKey.currentContext;
+                  if (context != null) {
+                     print("🔍 DEBUG ACTION: Navigating to CallScreen");
+                     Navigator.pushReplacement(
+                       context,
+                       MaterialPageRoute(builder: (_) => CallScreen(
+                          peerName: callData['callerName'] ?? 'Caller',
+                          peerAvatar: '', 
+                          isCaller: false,
+                          isVideo: callData['callType'] == 'video',
+                       ))
+                     );
+                  } else {
+                     print("❌ DEBUG ACTION: Context is NULL, cannot navigate");
+                     // Optional: Store pending action to check in main.dart?
+                  }
+               } else {
+                  print("⚠️ DEBUG ACTION: Unknown Action ID or Body Tap");
+               }
+            } catch (e) {
+               print("❌ DEBUG ACTION: Error parsing payload: $e");
+            }
+         }
   }
 
   /// Handle remote message (foreground & background)
@@ -280,8 +329,6 @@ class NotificationService {
     print('✅ Showed notification for message: ${data['messageId']}');
   }
   
-
-
   /// Cancel a specific message notification
   static Future<void> cancelMessageNotification(String? messageId) async {
     if (messageId == null) return;
@@ -308,6 +355,27 @@ class NotificationService {
       print("❌ Call notification cancelled (ID: 12345)");
   }
 
-
+  /// Public method to start ringtone (called by IncomingScreen or Notification)
+  static Future<void> startRingtone() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final String ringtoneUri = prefs.getString('call_ringtone') ?? '';
+        
+        print("🔍 Sending broadcast to start ringtone with URI: $ringtoneUri");
+        
+        // Send broadcast to CallNotificationReceiver
+        final intent = AndroidIntent(
+          action: 'com.example.whatsapp_clone.CALL_INCOMING',
+          package: 'com.example.whatsapp_clone',
+          arguments: <String, dynamic>{'ringtone_uri': ringtoneUri},
+          flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
+        );
+        await intent.sendBroadcast();
+        
+        print("✅ Ringtone broadcast sent successfully");
+      } catch (e) {
+        print("❌ ERROR sending broadcast: $e");
+      }
+  }
 
 }

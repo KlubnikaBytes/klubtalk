@@ -291,7 +291,13 @@ class _MobileChatLayoutState extends State<MobileChatLayout> {
     if (index == 0) {
       return FloatingActionButton(
         backgroundColor: const Color(0xFFC92136),
-        child: const Icon(Icons.message, color: Colors.white),
+       child: Padding(
+          padding: const EdgeInsets.all(12.0), 
+          child: Image.asset(
+            'assets/images/new_chat_icon.png', 
+            color: Colors.white, // Ensure white tint
+          ),
+        ),
         onPressed: () {
           Navigator.push(context, MaterialPageRoute(builder: (context) => const NewChatScreen()));
         },

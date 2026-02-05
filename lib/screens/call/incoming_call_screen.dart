@@ -32,6 +32,16 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
     super.initState();
     _displayName = widget.callerName; // Initial fallback
     _resolveName();
+    
+    // 🎵 Ensure Ringtone Plays when Screen Opens
+    NotificationService.startRingtone();
+  }
+
+  @override
+  void dispose() {
+    // Safety: Stop ringtone if screen closes without explicit accept/reject
+    NotificationService.cancelCallNotification();
+    super.dispose();
   }
 
   Future<void> _resolveName() async {

@@ -91,6 +91,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   StreamSubscription? _seenSub;
   StreamSubscription? _groupUpdateSub;
 
+  String _displayName = ''; // Cache for Header
+  String _displayAvatar = '';
+  String _currentWallpaper = ''; // Local state for wallpaper
+
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
 
   // Search State
@@ -103,8 +107,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   bool _isLoadingSearch = false;
 
   // Dynamic Group Info
-  String _displayName = '';
-  String _displayAvatar = '';
+  // Dynamic Group Info - Already declared above
+  // String _displayName = '';
+  // String _displayAvatar = '';
 
 
   @override
@@ -115,17 +120,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     _displayAvatar = widget.isGroup ? (widget.groupPhoto ?? '') : (widget.contact?.profileImage ?? '');
 
     _loadMessages();
-    if (widget.isGroup) _loadGroupDetails(); // Load fresh group info
+    _loadChatDetails(); // Load custom wallpaper & group info
     _checkBlockStatus();
     // DEBUG: Log initial screen load
     print("🎨 ChatScreen Init - Using fixed glassmorphism background");
-    _checkBlockStatus();
     _setupSocketListeners(); // Listen to socket
     SocketService().joinChat(widget.chatId); // Join Chat Room
     
     // Initial Seen Check (Only if visible, which usually implies yes in initState unless started in bg?)
-    // Actually, initState runs before build, so technically visible.
-    // We defer slightly to ensure route is ready? No, immediate is fine.
     if (_isScreenVisible && _isAppResumed) {
        SocketService().markSeen(widget.chatId); 
     }
@@ -418,9 +420,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     super.dispose();
   }
 
-  Future<void> _loadGroupDetails() async {
+  Future<void> _loadChatDetails() async {
     try {
       final chats = await _chatService.getMyChats();
+      // Use toList() to debug or strict check? No, firstWhere is fine.
       final currentChat = chats.firstWhere(
         (c) => (c['_id'] ?? c['id']) == widget.chatId, 
         orElse: () => {}
@@ -428,12 +431,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
       
       if (currentChat.isNotEmpty && mounted) {
          setState(() {
-             _displayName = currentChat['groupName'] ?? currentChat['name'] ?? 'Group';
-             _displayAvatar = currentChat['groupAvatar'] ?? currentChat['avatar'] ?? '';
+             // Only update if not empty, or simple override?
+             // For groups, name/avatar is important. 
+             // For 1-on-1, name might be 'peerName', but let's trust getMyChats
+             if (widget.isGroup) {
+                 _displayName = currentChat['groupName'] ?? currentChat['name'] ?? _displayName;
+                 _displayAvatar = currentChat['groupAvatar'] ?? currentChat['avatar'] ?? _displayAvatar;
+             }
+             // For both:
+             _currentWallpaper = currentChat['wallpaper'] ?? '';
          });
       }
     } catch (e) {
-      print("Error loading group details: $e");
+      print("Error loading chat details: $e");
     }
   }
 
@@ -985,28 +995,72 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
      final colors = [
        Colors.white, const Color(0xFFECE5DD), const Color(0xFFC92136), 
        const Color(0xFFE1F5FE), const Color(0xFFFBE9E7),
+       const Color(0xFFFBEDEF), // Default Pink
      ];
+     
+     // Strawberry Wallpaper Option (Asset or URL)
+     // Since we don't have the asset loaded in pubspec yet, let's just use the Hex first, 
+     // but the user asked for "Strawberries in the default chat wallpaper".
+     // We will treat a special string prefix like 'asset:' or 'http' for image wallpapers.
      
      showDialog(
        context: context,
        builder: (context) => AlertDialog(
          title: const Text("Chat Wallpaper"),
-         content: Wrap(
-           spacing: 10,
-           runSpacing: 10,
-           children: colors.map((c) => GestureDetector(
-              onTap: () {
-                String hex = '#${c.value.toRadixString(16).substring(2)}';
-                _chatService.setChatTheme(widget.chatId, hex);
-                // Note: Wallpaper picker disabled in glassmorphism design
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallpaper feature disabled in glassmorphism design")));
-              },
-              child: CircleAvatar(backgroundColor: c, radius: 20),
-           )).toList(),
+         content: Column(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             Wrap(
+               spacing: 10,
+               runSpacing: 10,
+               children: [
+                 ...colors.map((c) => GestureDetector(
+                    onTap: () {
+                      String hex = '#${c.value.toRadixString(16).substring(2)}';
+                      _updateWallpaper(hex);
+                      Navigator.pop(context);
+                    },
+                    child: CircleAvatar(backgroundColor: c, radius: 20),
+                 )),
+                 // Strawberry Option
+                 GestureDetector(
+                    onTap: () {
+                       // Use a distinct value for strawberry wallpaper
+                       _updateWallpaper('strawberry'); 
+                       Navigator.pop(context);
+                    },
+                    child: const CircleAvatar(
+                       backgroundColor: Color(0xFFFBEDEF),
+                       radius: 20,
+                       child: Text("🍓", style: TextStyle(fontSize: 20)),
+                    ),
+                 )
+               ],
+             ),
+             const SizedBox(height: 20),
+             TextButton(
+               onPressed: () {
+                  _updateWallpaper(''); // Reset to default
+                  Navigator.pop(context);
+               }, 
+               child: const Text("Reset to Default")
+             )
+           ],
          ),
        )
      );
+  }
+
+  void _updateWallpaper(String wallpaper) {
+      setState(() {
+         // Optimistic update
+         _currentWallpaper = wallpaper; 
+      });
+      _chatService.setChatTheme(widget.chatId, wallpaper).then((_) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallpaper updated")));
+      }).catchError((e) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update wallpaper")));
+      });
   }
 
   void _showReportDialog() {
@@ -1738,7 +1792,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
         children: [
           Expanded(
             child: Container(
-              color: const Color(0xFFFBEDEF), // Fixed Opaque Light Pink
+              decoration: _currentWallpaper.isNotEmpty 
+                  ? BoxDecoration(
+                      color: _currentWallpaper.startsWith('#') ? Color(int.parse(_currentWallpaper.substring(1), radix: 16) + 0xFF000000) : null,
+                      image: _currentWallpaper == 'strawberry' 
+                          ? const DecorationImage(
+                              // User's custom strawberry wallpaper
+                              image: AssetImage("assets/images/strawberry_wallpaper_final.jpg"), 
+                              fit: BoxFit.cover, 
+                            ) 
+                          : null
+                    )
+                  : const BoxDecoration(color: Color(0xFFFBEDEF)), // Default Pink
               child: _isLoading 
                   ? const Center(child: CircularProgressIndicator())
                   : GestureDetector(
@@ -1872,7 +1937,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                         // WRAPPER: Swipe to Reply & Reactions
                         return Dismissible(
                            key: ValueKey(data['_id'] ?? data['tempId'] ?? DateTime.now().toIso8601String()),
-                           direction: DismissDirection.startToEnd,
+                           // Fix: Left swipe for Me, Right swipe for Others
+                           direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
+                           dismissThresholds: const {
+                              DismissDirection.startToEnd: 0.2, // Others: Right Swipe
+                              DismissDirection.endToStart: 0.2  // Me: Left Swipe
+                           },
                            confirmDismiss: (direction) async {
                               _onSwipeToReply(data);
                               return false; // Don't actually dismiss
@@ -1880,6 +1950,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                            background: Container(
                              alignment: Alignment.centerLeft,
                              padding: const EdgeInsets.only(left: 20),
+                             color: Colors.transparent, 
+                             child: Icon(Icons.reply, color: Colors.grey[700]), 
+                           ),
+                           secondaryBackground: Container(
+                             alignment: Alignment.centerRight,
+                             padding: const EdgeInsets.only(right: 20),
+                             color: Colors.transparent, 
                              child: Icon(Icons.reply, color: Colors.grey[700]), 
                            ),
                            child: GestureDetector(
