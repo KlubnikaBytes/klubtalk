@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart';
 import 'package:whatsapp_clone/screens/group_details_screen.dart';
 import 'package:whatsapp_clone/services/chat_service.dart';
+import 'package:whatsapp_clone/utils/chat_session_store.dart';
+import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/models/contact.dart';
 
 class GroupInfoScreen extends StatefulWidget {
@@ -34,6 +36,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
          final result = await _chatService.createCommunity(name, _descriptionController.text.trim(), widget.selectedParticipantIds);
          
          if (mounted) {
+             ChatSessionStore().triggerRefresh(); // Force Home Refresh
              Navigator.popUntil(context, (route) => route.isFirst);
              // Navigate to Community Home
              Navigator.push(
@@ -50,6 +53,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
          }
       } else {
          final chatId = await _chatService.createGroupChat(name, widget.selectedParticipantIds, description: _descriptionController.text.trim());
+         
+         // Fix Sync: Trigger refresh and join socket immediately
+         SocketService().joinChat(chatId);
+         ChatSessionStore().triggerRefresh();
+
          if (mounted) {
             Navigator.popUntil(context, (route) => route.isFirst); 
             final groupContact = Contact(name: name, profileImage: '', isOnline: false);

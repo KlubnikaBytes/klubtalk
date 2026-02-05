@@ -103,20 +103,27 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
       // 3. Match & Prepare Display List
       final currentUid = AuthService().currentUserId;
       final List<app_contact.Contact> finalContacts = [];
-            for (var user in registeredUsers) {
+      _userMap.clear();
+
+      for (var user in registeredUsers) {
            if (user.uid == currentUid) continue;
            if (widget.excludeIds.contains(user.uid)) continue;
 
-          // Find display name from device contacts
+          // STRICT LOGIC: Default to phone number or backend name, but OVERRIDE if device match found
           String displayName = user.name.isNotEmpty ? user.name : user.phoneNumber;
+          
           try {
              if (deviceContacts.isNotEmpty) {
                  final match = deviceContacts.firstWhere((c) => 
-                    (c.phones as List).any((p) => _contactService.normalizePhoneNumber(p.number) == user.phoneNumber)
+                    (c.phones as List).any((p) => _contactService.normalizePhoneNumber(p.number) == user.phoneNumber),
+                    orElse: () => null
                  );
-                 displayName = match.displayName;
+                 
+                 if (match != null) {
+                    displayName = match.displayName;
+                 }
              }
-          } catch (_) {}
+          } catch (e) { print("Error matching contact: $e"); }
 
           final contact = app_contact.Contact(
              name: displayName,
@@ -125,12 +132,37 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
           );
           
           finalContacts.add(contact);
-          _userMap[user.uid] = user; // Store for valid IDs
+          // Store user with updated display name temporarily or keep original?
+          // We need to keep original User model but maybe we should override the name there too for display downstream
+          // For now, _userMap stores the raw user, but the UI uses the 'contact' we just built for display?
+          // No, the UI uses `validUsers[index]` which comes from `_userMap`.
+          // FIX: Clone User or Update User Name in Map
+          _userMap[user.uid] = UserModel(
+              uid: user.uid,
+              name: displayName, // OVERRIDE HERE for UI
+              phoneNumber: user.phoneNumber,
+              profilePhotoUrl: user.profilePhotoUrl,
+              about: user.about,
+              isOnline: user.isOnline,
+              lastSeen: user.lastSeen,
+             // ... other fields copy if needed, or just minimal for display
+          );
       }
       
       if (mounted) {
+        // Sort by display name
+        final sortedKeys = _userMap.keys.toList()
+          ..sort((k1, k2) => (_userMap[k1]?.name ?? '').toLowerCase().compareTo((_userMap[k2]?.name ?? '').toLowerCase()));
+
+        // Rebuild map to match sorted order just in case, or just trust validUsers retrieval
+        final Map<String, UserModel> sortedMap = {};
+        for(var k in sortedKeys) {
+           sortedMap[k] = _userMap[k]!;
+        }
+        _userMap = sortedMap;
+
         setState(() {
-          _displayContacts = finalContacts;
+          _displayContacts = finalContacts; // validUsers is derived from _userMap so this might be redundant but safe
           _isLoading = false;
         });
       }
