@@ -29,9 +29,15 @@ class WebrtcService {
              handleAnswer(payload);
              break;
            case 'video_call_reject':
+             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+             print("🚫 RECEIVED video_call_reject event from ${payload?['from']}");
+             print("🚫 Calling onCallStateChange with 'Rejected'");
              onCallStateChange?.call("Rejected");
+             print("🚫 Now calling endCall() to cleanup");
              // Cleanly end call state
              endCall();
+             print("🚫 Call rejection handled");
+             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
              break;
            case 'video_call_end':
              onCallStateChange?.call("Ended");
@@ -187,10 +193,13 @@ class WebrtcService {
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
      print("🔻 WebrtcService.rejectCall() called");
      print("🔻 Rejecting call to: '$to'");
+     print("🔻 Setting pendingDecline = true to block IncomingCallScreen");
+     pendingDecline = true; // Prevent IncomingCallScreen from showing
      print("🔻 Emitting 'video_call_reject' socket event");
      SocketService().emit('video_call_reject', {'to': to});
      print("🔻 Socket event emitted, now calling endCall()");
      endCall();
+     pendingDecline = false; // Reset after handling
      print("🔻 rejectCall() complete");
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   }
@@ -200,6 +209,14 @@ class WebrtcService {
 
   void setPendingAutoAccept(bool value) {
      pendingAutoAccept = value;
+  }
+
+  // Track pending decline (when declined from notification)
+  bool pendingDecline = false;
+
+  void setPendingDecline(bool value) {
+     pendingDecline = value;
+     print("🔻 pendingDecline set to: $value");
   }
 
   // Handle Incoming Call 

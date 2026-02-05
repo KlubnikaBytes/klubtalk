@@ -176,6 +176,14 @@ class _MyAppState extends State<MyApp> {
                  return;
               }
 
+              // 🔻 DECLINE CHECK:
+              // If user already declined from notification, skip showing IncomingCallScreen
+              if (WebrtcService().pendingDecline) {
+                 print("🔻 Call already declined from notification, ignoring socket event");
+                 WebrtcService().setCallActive(false); // Reset lock
+                 return;
+              }
+
               if (navigatorKey.currentState != null) {
                  navigatorKey.currentState!.push(
                    MaterialPageRoute(
