@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:whatsapp_clone/utils/web_utils.dart'; // Helper for web
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
+import 'package:whatsapp_clone/screens/call/call_screen.dart'; // Added missing import
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -150,7 +151,24 @@ class _MyAppState extends State<MyApp> {
               // we process it immediately and DO NOT show Incoming Call Screen.
               if (WebrtcService().pendingAutoAccept) {
                  print("🚀 Auto-Accepting Call (Cold Start)...");
-                 WebrtcService().processIncomingOffer(data['offer'], data['callType'] == 'video');
+                 final isVideo = data['callType'] == 'video';
+                 WebrtcService().processIncomingOffer(data['offer'], isVideo);
+                 
+                 // 🧭 NAVIGATE TO ACTIVE CALL SCREEN from Cold Start
+                 if (navigatorKey.currentState != null) {
+                    print("🧭 Navigating to CallScreen (Cold Start Fixed)...");
+                    navigatorKey.currentState!.pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => CallScreen(
+                          peerName: "User ${data['from']?.toString().substring(0, 5) ?? 'Unknown'}...",
+                          peerAvatar: "", // Can resolve later
+                          isCaller: false,
+                          isVideo: isVideo,
+                          peerId: data['from'],
+                        )
+                      )
+                    );
+                 }
                  return;
               }
 

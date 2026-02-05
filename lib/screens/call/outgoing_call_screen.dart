@@ -129,7 +129,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   @override
   void dispose() {
     // Prevent callbacks after widget death
-    _webrtcService.onCallStateChange = null; 
+    // _webrtcService.onCallStateChange = null; // DANGEROUS: Might wipe CallScreen's listener!
     super.dispose();
   }
 }
