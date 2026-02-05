@@ -143,27 +143,37 @@ class _MyAppState extends State<MyApp> {
              }
              
              WebrtcService().setCallActive(true); // Lock state
-             
              final data = event['data'];
-             
-             if (navigatorKey.currentState != null) {
-                navigatorKey.currentState!.push(
-                  MaterialPageRoute(
-                    builder: (_) => IncomingCallScreen(
-                      callerName: "User ${data['from']?.toString().substring(0, 5) ?? 'Unknown'}...",
-                      callerAvatar: "",
-                      callType: data['callType'],
-                      callData: data,
-                    )
-                  )
-                ).then((_) {
-                   // When screen pops (back button / reject without endCall), ensure state is cleared if not handled
-                   // Actually, if we accepted, we are "On Call" so isCallActive should remain True
-                   // If we rejected, isCallActive should be False
-                   // But "then" logic is hard to distinguish Accept vs Reject unless we return value
-                   // Safety check: if call is not connected, reset.
-                });
-             }
+              
+              // 🔍 COLD START CHECK:
+              // If WebrtcService is waiting for this offer (auto-accept from notification),
+              // we process it immediately and DO NOT show Incoming Call Screen.
+              if (WebrtcService()._pendingAutoAccept) {
+                 print("🚀 Auto-Accepting Call (Cold Start)...");
+                 WebrtcService()._processIncomingOffer(data['offer'], data['callType'] == 'video');
+                 return;
+              }
+
+              if (navigatorKey.currentState != null) {
+                 navigatorKey.currentState!.push(
+                   MaterialPageRoute(
+                     builder: (_) => IncomingCallScreen(
+                       callerName: "User ${data['from']?.toString().substring(0, 5) ?? 'Unknown'}...",
+                       callerAvatar: "",
+                       callType: data['callType'],
+                       callData: data,
+                     )
+                   )
+                 ).then((_) {
+                    // When screen pops (back button), we might need cleanup
+                    // But usually endCall handles it.
+                    if (WebrtcService().isCallActive) {
+                       // If we popped but call is active, it means we answered -> CallScreen replaces this.
+                       // If we popped and call is NOT active, it means we rejected/ended.
+                       WebrtcService().setCallActive(false);
+                    }
+                 });
+              }
           }
       });
     } catch (e) {

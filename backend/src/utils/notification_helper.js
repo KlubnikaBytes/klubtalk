@@ -70,7 +70,7 @@ async function sendCallNotification(recipientId, callerName, callType, callData)
                 callerId: callData.from,
                 callerName: callerName,
                 callId: (callData.callId || '').toString(), // Send Call ID
-                offer: JSON.stringify(callData.offer || {}), // REQUIRED for cold start accept
+                // offer: REMOVED to prevent "Payload too big"
                 chatId: callData.chatId || ''
             },
             android: {

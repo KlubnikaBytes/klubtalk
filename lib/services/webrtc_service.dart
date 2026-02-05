@@ -188,11 +188,15 @@ class WebrtcService {
      endCall();
   }
 
+  // Track pending acceptance
+  bool _pendingAutoAccept = false;
+
+  void setPendingAutoAccept(bool value) {
+     _pendingAutoAccept = value;
+  }
+
   // Handle Incoming Call 
   Future<void> handleIncomingCall(Map<String, dynamic> data) async {
-      // NOTE: We do NOT check if (_isCallActive) return; here because this method is called 
-      // when the user hits 'Accept' on the incoming screen (which is already an active state).
-      
       try {
         await initializeRenderers();
         
@@ -208,13 +212,35 @@ class WebrtcService {
         _logSaved = false;
         bool video = data['callType'] == 'video';
         
-        // FIX: Update internal state so saveCallLog uses correct type
         isVideoEnabled = video; 
         isAudioEnabled = true;
 
         final offerMap = data['offer'];
-        if (offerMap == null) throw Exception("No offer data received");
+        if (offerMap == null || offerMap == '{}') { // Handle empty json string
+            // Missing offer (Notification Payload too small)
+            print("⚠️ handleIncomingCall: Missing Offer! Setting _pendingAutoAccept = true and Waiting for Socket...");
+            setPendingAutoAccept(true);
+            onCallStateChange?.call("Connecting..."); // Show connecting while waiting
+            return;
+        }
         
+        // If we have offer, proceed normally
+        await _processIncomingOffer(offerMap, video);
+        
+      } catch (e) {
+        print("Error handling incoming call: $e");
+        endCall(); 
+        rethrow;
+      }
+  }
+
+  // Helper to process offer once available
+  Future<void> _processIncomingOffer(dynamic offerMap, bool video) async {
+       print("✅ processing Incoming Offer...");
+       if (offerMap is String) {
+          offerMap = jsonDecode(offerMap); // Handle stringified offer
+       }
+
         await _createPeerConnection();
         
         // Always request audio, video optional
@@ -229,9 +255,9 @@ class WebrtcService {
         
         _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         
-        if (!_isCallActive) {
-           _localStream?.getTracks().forEach((t)=>t.stop());
-           return;
+        if (!_isCallActive && !_pendingAutoAccept) { 
+           // NOTE: _isCallActive might be false initially, but if pending, we continue?
+           // Actually call screen sets active.
         }
         
         if (_localStream != null) {
@@ -258,13 +284,8 @@ class WebrtcService {
         });
         
         onCallStateChange?.call("Connecting...");
-        _callStartTime = DateTime.now(); // Start counting when accepted/connected (approx)
-        
-      } catch (e) {
-        print("Error handling incoming call: $e");
-        endCall(); 
-        rethrow;
-      }
+        _callStartTime = DateTime.now(); 
+        _pendingAutoAccept = false; // Reset
   }
   
   // ... (handleAnswer, handleCandidate unchanged) ...
