@@ -21,7 +21,7 @@ class UserModel {
     required this.uid,
     required this.phoneNumber,
     this.name = '',
-    this.about = 'Hey there! I am using WhatsApp.',
+    this.about = 'KlubTalk is kinda fun',
     this.profilePhotoUrl = '',
     this.isOnline = false,
     this.lastSeen,
@@ -46,7 +46,7 @@ class UserModel {
       uid: uid,
       phoneNumber: map['phone'] ?? map['phoneNumber'] ?? '', // Handle both backend 'phone' and old 'phoneNumber'
       name: map['name'] ?? '',
-      about: map['about'] ?? 'Hey there! I am using WhatsApp.',
+      about: map['about'] ?? 'KlubTalk is kinda fun',
       profilePhotoUrl: map['avatar'] ?? map['profilePhotoUrl'] ?? '',
       isOnline: map['isOnline'] ?? false,
       lastSeen: lastSeenVal,

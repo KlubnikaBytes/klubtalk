@@ -27,8 +27,13 @@ class SocketService {
   Stream<Map<String, dynamic>> get seenStatusStream => _seenStatusController.stream;
   Stream<Map<String, dynamic>> get callStream => _callController.stream;
   // Fix: Expose Status Stream
+  // Fix: Expose Status Stream
   final _statusController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get statusStream => _statusController.stream;
+
+  // Group Updates
+  final _groupUpdateController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get groupUpdateStream => _groupUpdateController.stream;
 
   // Connection State Stream
   final _connectionStateController = StreamController<bool>.broadcast();
@@ -145,6 +150,11 @@ class SocketService {
     // --- Status Events ---
     _socket!.on('status_uploaded', (data) {
        _statusController.add(Map<String, dynamic>.from(data));
+    });
+
+    _socket!.on('group_updated', (data) {
+       print("Socket: Recreived group update: $data");
+       _groupUpdateController.add(Map<String, dynamic>.from(data));
     });
 
     // --- Call Events ---

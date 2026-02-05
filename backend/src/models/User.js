@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema({
     firebaseUid: { type: String, unique: true, sparse: true }, // Optional now
     phone: { type: String, required: true, unique: true },
     name: { type: String, default: '' },
-    about: { type: String, default: 'Hey there! I am using WhatsApp.' },
+    about: { type: String, default: 'KlubTalk is kinda fun' },
     avatar: { type: String, default: '' }, // URL/Path on VPS
     lastSeen: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },

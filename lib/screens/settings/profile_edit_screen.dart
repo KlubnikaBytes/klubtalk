@@ -1,10 +1,14 @@
-import 'package:flutter/foundation.dart'; // Add this input
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/services/user_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:whatsapp_clone/screens/settings/filter_screen.dart'; // Ensure this exists
+
+import 'package:whatsapp_clone/config/api_config.dart'; // Import ApiConfig
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -19,23 +23,98 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _pickAndUploadImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
 
     if (pickedFile != null) {
-      setState(() => _isUploading = true);
-      try {
-        if (kIsWeb) {
-          final bytes = await pickedFile.readAsBytes();
-          await _userService.updateProfilePhoto(bytes);
-        } else {
-          await _userService.updateProfilePhoto(File(pickedFile.path));
+      if (kIsWeb) {
+        // Web: Direct Upload (Crop/Filter not easily supported on Web with these packages)
+        setState(() => _isUploading = true);
+        try {
+           final bytes = await pickedFile.readAsBytes();
+           await _userService.updateProfilePhoto(bytes);
+        } catch(e) {
+           _showError('Upload failed: $e');
+        } finally {
+           setState(() => _isUploading = false);
         }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
-      } finally {
-        if (mounted) setState(() => _isUploading = false);
+        return;
+      }
+
+      // Mobile: Crop -> Filter -> Upload
+      // 1. Crop
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+
+        uiSettings: [
+          AndroidUiSettings(
+              toolbarTitle: 'Crop Image',
+              toolbarColor: const Color(0xFFC92136),
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: false),
+          IOSUiSettings(
+            title: 'Crop Image',
+          ),
+        ],
+      );
+
+      if (croppedFile == null) return; // Cancelled
+
+      // 2. Filter
+      // Navigate to Filter Screen
+      // We expect FilterScreen to return the filtered file or Map containing it
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => FilterScreen(imagePath: croppedFile.path)),
+      );
+
+      File? fileToUpload;
+      if (result != null && result is Map && result.containsKey('image_filtered')) {
+         fileToUpload = result['image_filtered'];
+      } else if (result != null && result is File) {
+         fileToUpload = result; // Just in case
+      } else {
+         return; 
+      }
+
+      // 3. Upload
+      if (fileToUpload != null) {
+         setState(() => _isUploading = true);
+         try {
+           await _userService.updateProfilePhoto(fileToUpload);
+         } catch (e) {
+           _showError('Upload failed: $e');
+         } finally {
+            setState(() => _isUploading = false);
+         }
       }
     }
+  }
+
+  void _showError(String message) {
+     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _viewProfilePhoto(String url) {
+    if (url.isEmpty) return;
+    final fullUrl = ApiConfig.getFullImageUrl(url); // Use helper to ensure full URL
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.network(fullUrl, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _editName(BuildContext context, String currentName) {
@@ -111,9 +190,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 Center(
                   child: Stack(
                     children: [
-                      Hero(
-                        tag: 'profile_pic',
-                        child: AvatarWidget(imageUrl: user.profilePhotoUrl, radius: 80),
+                      GestureDetector(
+                        onTap: () => _viewProfilePhoto(user.profilePhotoUrl),
+                        child: Hero(
+                          tag: 'profile_pic',
+                          child: AvatarWidget(imageUrl: user.profilePhotoUrl, radius: 80),
+                        ),
                       ),
                       Positioned(
                         bottom: 0,
@@ -139,7 +221,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   leading: const Icon(Icons.person, color: Colors.grey),
                   title: const Text('Name', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   subtitle: Text(user.name.isEmpty ? 'Tap to add name' : user.name, style: const TextStyle(fontSize: 16, color: Colors.black)),
-                  trailing: const Icon(Icons.edit, color: Color(0xFF075E54)),
+                  trailing: const Icon(Icons.edit, color: Color(0xFFC92136)), // Changed to Red
                   onTap: () => _editName(context, user.name),
                 ),
                 const Padding(

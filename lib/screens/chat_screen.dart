@@ -89,6 +89,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   StreamSubscription? _onlineSub;
   StreamSubscription? _deliverySub;
   StreamSubscription? _seenSub;
+  StreamSubscription? _groupUpdateSub;
 
   bool get _isPeerBlocked => _blockedUserIds.contains(widget.peerId);
 
@@ -348,6 +349,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
           }
        }
     });
+
+    // 6. Group Updates
+    _groupUpdateSub = socketService.groupUpdateStream.listen((data) {
+       if (data['chatId'] == widget.chatId && mounted) {
+          print("ChatScreen: Group Update Received: $data");
+          setState(() {
+             if (data['groupName'] != null) _displayName = data['groupName'];
+             if (data['groupAvatar'] != null) _displayAvatar = data['groupAvatar'];
+             // Handle other permissions/participants if needed
+          });
+       }
+    });
   }
 
   void _updateMessageStatus({String? messageId, String? tempId, required String status}) {
@@ -398,6 +411,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     _onlineSub?.cancel();
     _deliverySub?.cancel();
     _seenSub?.cancel();
+    _groupUpdateSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -1469,8 +1483,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
       String avatarUrl = '';
       
       if (widget.isGroup) {
-         displayName = widget.groupName ?? 'Group';
-         avatarUrl = widget.groupPhoto ?? '';
+         // Use dynamic state for groups
+         displayName = _displayName.isNotEmpty ? _displayName : (widget.groupName ?? 'Group');
+         avatarUrl = _displayAvatar; // Use dynamic avatar
       } else {
          displayName = widget.contact?.name ?? 'User';
          avatarUrl = widget.contact?.profileImage ?? '';
@@ -1833,7 +1848,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Text(
-                                                DateFormat('hh:mm a').format(DateTime.tryParse(data['timestamp'].toString()) ?? DateTime.now()),
+                                                DateFormat('hh:mm a').format((DateTime.tryParse(data['timestamp'].toString()) ?? DateTime.now()).toLocal()),
                                                 style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.black54),
                                               ),
                                               if (isMe) ...[

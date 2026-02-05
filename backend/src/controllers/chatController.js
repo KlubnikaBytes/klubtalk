@@ -540,6 +540,25 @@ exports.updateGroupInfo = async (req, res) => {
         if (avatar !== undefined) chat.groupAvatar = avatar;
 
         await chat.save();
+
+        // Socket Emit
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            // Emit to the room (everyone in group)
+            io.to(chatId).emit('group_updated', {
+                chatId: chat._id,
+                groupName: chat.groupName,
+                groupDescription: chat.groupDescription,
+                groupAvatar: chat.groupAvatar,
+                editInfoPermission: chat.editInfoPermission,
+                sendMessagePermission: chat.sendMessagePermission,
+                addParticipantsPermission: chat.addParticipantsPermission,
+                participants: chat.participants,
+                groupAdmins: chat.groupAdmins
+            });
+        } catch (sErr) { console.log("Socket emit failed in Group Update:", sErr); }
+
         res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -613,6 +632,25 @@ exports.updateGroupInfo = async (req, res) => {
         if (avatar) chat.groupAvatar = avatar;
 
         await chat.save();
+
+        // Socket Emit
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            // Emit to the room (everyone in group)
+            io.to(chatId).emit('group_updated', {
+                chatId: chat._id,
+                groupName: chat.groupName,
+                groupDescription: chat.groupDescription,
+                groupAvatar: chat.groupAvatar,
+                editInfoPermission: chat.editInfoPermission,
+                sendMessagePermission: chat.sendMessagePermission,
+                addParticipantsPermission: chat.addParticipantsPermission,
+                participants: chat.participants,
+                groupAdmins: chat.groupAdmins
+            });
+        } catch (sErr) { console.log("Socket emit failed in Group Update:", sErr); }
+
         res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -635,6 +673,21 @@ exports.updateGroupPermissions = async (req, res) => {
         if (addParticipantsPermission) chat.addParticipantsPermission = addParticipantsPermission;
 
         await chat.save();
+
+        // Socket Emit
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            io.to(chatId).emit('group_updated', {
+                chatId: chat._id,
+                permissions: {
+                    editInfoPermission: chat.editInfoPermission,
+                    sendMessagePermission: chat.sendMessagePermission,
+                    addParticipantsPermission: chat.addParticipantsPermission
+                }
+            });
+        } catch (sErr) { console.log("Socket emit failed in Group Permissions:", sErr); }
+
         res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -655,6 +708,16 @@ exports.addGroupParticipant = async (req, res) => {
         if (!chat.participants.includes(userId)) {
             chat.participants.push(userId);
             await chat.save();
+
+            // Socket Emit
+            try {
+                const { getIO } = require('../socket');
+                const io = getIO();
+                io.to(chatId).emit('group_updated', {
+                    chatId: chat._id,
+                    participants: chat.participants
+                });
+            } catch (sErr) { console.log("Socket emit failed in Add Participant:", sErr); }
         }
         res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -684,6 +747,18 @@ exports.removeGroupParticipant = async (req, res) => {
         }
 
         await chat.save();
+
+        // Socket Emit
+        try {
+            const { getIO } = require('../socket');
+            const io = getIO();
+            io.to(chatId).emit('group_updated', {
+                chatId: chat._id,
+                participants: chat.participants,
+                groupAdmins: chat.groupAdmins
+            });
+        } catch (sErr) { console.log("Socket emit failed in Remove Participant:", sErr); }
+
         res.json(await getChatResponse(chat._id, req.uid));
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
