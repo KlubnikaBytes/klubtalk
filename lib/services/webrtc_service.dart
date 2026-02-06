@@ -524,10 +524,10 @@ class WebrtcService {
           "type": callType,
           "status": status,
           "duration": duration,
-          // "callTime": DateTime.now().toUtc().toIso8601String(), // REMOVED: Let Server decide time (Verification)
+          "callTime": DateTime.now().toUtc().toIso8601String(), // FIX: Send UTC explicitly to pass validation AND fix timezone
       };
 
-      await http.post(
+      final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/calls/save'),
         headers: {
           'Authorization': 'Bearer $token',
@@ -535,9 +535,14 @@ class WebrtcService {
         },
         body: jsonEncode(body)
       );
-      print("✅ Call Log Saved: ${jsonEncode(body)}");
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+          print("✅ Call Log Saved: ${jsonEncode(body)}");
+      } else {
+          print("❌ Failed to save call log: ${response.statusCode} - ${response.body}");
+      }
     } catch (e) {
-      print("❌ Failed to save call log: $e");
+      print("❌ Failed to save call log (Exception): $e");
     }
   }
 

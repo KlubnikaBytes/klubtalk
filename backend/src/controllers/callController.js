@@ -36,6 +36,7 @@ exports.saveCall = async (req, res) => {
         });
 
         await newCall.save();
+        console.log(`✅ Call saved successfully: ${newCall._id}`);
         res.status(201).json({ message: 'Call saved successfully', call: newCall });
     } catch (error) {
         console.error('Error saving call:', error);
