@@ -235,20 +235,35 @@ class WebrtcService {
      _declinedCallerId = to; // Track who we declined
      _pendingDeclineSetTime = now;
      
-     // CRITICAL FIX: Direct await instead of detached Future
-     try {
-        print("🔻 [$timestamp] Ensuring socket connection before emit...");
-        await SocketService().ensureConnected();
-        
-        print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
-        SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
-        print("✅ [$timestamp] Socket event emitted");
-     } catch (e) {
-        print("❌ [$timestamp] Error in rejectCall socket emission: $e");
-     }
-     
-     print("🔻 [$timestamp] Calling endCall()");
-     endCall();
+      // 🌍 HTTP REJECTION (Reliable for Background/Cold Start)
+      try {
+         print("🔻 [$timestamp] Sending HTTP Rejection to /api/calls/reject");
+         final token = await AuthService().getToken(); // Get valid token
+         
+         final response = await http.post(
+            Uri.parse('${ApiConfig.baseUrl}/api/calls/reject'),
+            headers: {
+               'Content-Type': 'application/json',
+               'Authorization': 'Bearer $token'
+            },
+            body: jsonEncode({'to': to})
+         );
+         
+         if (response.statusCode == 200) {
+            print("✅ [$timestamp] HTTP Rejection SUCCESS");
+         } else {
+            print("❌ [$timestamp] HTTP Rejection FAILED: ${response.statusCode} - ${response.body}");
+            // Fallback to socket if HTTP fails?
+            SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
+         }
+      } catch (e) {
+         print("❌ [$timestamp] HTTP Rejection Error: $e");
+         // Fallback to socket
+          SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
+      }
+
+      print("🔻 [$timestamp] Calling endCall()");
+      endCall();
      
      // DON'T reset pendingDecline immediately - keep it set for 10 seconds for cold start scenarios
      Future.delayed(const Duration(seconds: 10), () {

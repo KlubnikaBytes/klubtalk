@@ -75,19 +75,19 @@ class _CallScreenState extends State<CallScreen> {
     };
     
     _webrtcService.onCallStateChange = (status) {
+       print("📞 [CallScreen] onCallStateChange: '$status'"); // DEBUG LOG
        if (mounted) _status.value = status;
        if (status == "On Call") _startTimer();
        if (status == "Ended" || status == "Rejected") {
+          print("🛑 [CallScreen] Received End/Reject signal. Scheduling pop..."); 
           Future.delayed(const Duration(seconds: 1), () { 
+             print("🛑 [CallScreen] Popping navigation now (mounted=$mounted)");
              if (mounted) {
                if (Navigator.canPop(context)) {
                  Navigator.pop(context);
                } else {
-                 // If call screen was root (e.g. from notification), go to home
-                 // Note: Usually MobileChatLayout/ResponsiveLayout is our home.
-                 // Navigating back to main is better than leaving an empty screen.
-                 // However, WhatsApp usually just closes the activity. 
-                 // In Flutter, we can push home if we are stuck.
+                 print("⚠️ [CallScreen] Cannot pop! Is this the root route?");
+                 // Fallback: Push to Home? 
                }
              }
           });

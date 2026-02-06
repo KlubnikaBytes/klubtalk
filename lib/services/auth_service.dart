@@ -76,35 +76,59 @@ class AuthService {
 
   // Auto Login
   Future<bool> tryAutoLogin() async {
+    print('🔐 [AUTH] tryAutoLogin() called');
     final savedToken = await storage.read(key: 'jwt_token');
-    if (savedToken == null || JwtDecoder.isExpired(savedToken)) {
-      return false;
+    
+    if (savedToken == null) {
+       print('🔐 [AUTH] No saved token found');
+       return false;
+    }
+    
+    if (JwtDecoder.isExpired(savedToken)) {
+       print('🔐 [AUTH] Saved token is EXPIRED');
+       return false;
     }
 
     _token = savedToken;
+    print('🔐 [AUTH] Token loaded (valid). Verifying with backend...');
+
     try {
       // Fetch fresh user data
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/auth/me'),
         headers: {'Authorization': 'Bearer $_token'},
-      );
+      ).timeout(const Duration(seconds: 5)); // Add timeout
 
       if (response.statusCode == 200) {
         _currentUser = jsonDecode(response.body);
+        print('🔐 [AUTH] Backend verification SUCCESS. User: ${_currentUser?['name']}');
+        
         SocketService().connect(); // Connect to socket
         
         // Send FCM token to backend
         FcmService().sendTokenToBackend();
         
         return true;
+      } else if (response.statusCode == 401) {
+         print('🔐 [AUTH] Backend verification FAILED (401). Token invalid.');
+         await logout();
+         return false;
+      } else {
+         print('🔐 [AUTH] Backend verification returned status ${response.statusCode}. Keeping local token.');
+         // Optimistic: Keep token, assume valid, socket might work or fail later.
+         SocketService().connect();
+         return true;
       }
     } catch (e) {
-      print('Auto login error: $e');
+      print('🔐 [AUTH] Auto login network error: $e');
+      print('🔐 [AUTH] Proceeding optimistically with local token.');
+      
+      // OPTIMISTIC LOGIN:
+      // If network fails (timeout, no internet), we still start the socket with existing token.
+      // Socket handles its own reconnection.
+      SocketService().connect();
+      return true;
     }
-    
-    // If failed, clear token
-    await logout();
-    return false;
   }
 
   Future<void> updateProfile({required String name, String? about}) async {

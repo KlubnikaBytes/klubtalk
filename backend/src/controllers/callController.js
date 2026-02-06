@@ -94,3 +94,35 @@ exports.getCallById = async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
+
+exports.rejectCall = async (req, res) => {
+    try {
+        const { to } = req.body;
+        const from = req.user.uid; // From authMiddleware
+
+        if (!to) {
+            return res.status(400).json({ error: 'Missing "to" user ID' });
+        }
+
+        console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        console.log(`🔻 [API] Call Rejected via HTTP`);
+        console.log(`   From: ${from}`);
+        console.log(`   To: ${to}`);
+
+        // Get Socket.IO instance
+        const io = require('../socket').getIO();
+
+        // Emit rejection to the Caller (target)
+        io.to(to).emit('video_call_reject', {
+            from: from
+        });
+
+        console.log(`   ✅ Socket event emitted via HTTP Handler`);
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+        res.status(200).json({ message: 'Call rejected' });
+    } catch (error) {
+        console.error("❌ [API] Reject Call Error:", error);
+        res.status(500).json({ error: 'Failed to reject call' });
+    }
+};
