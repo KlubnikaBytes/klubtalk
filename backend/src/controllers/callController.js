@@ -3,25 +3,40 @@ const User = require('../models/User'); // In case we need it, or for populate i
 
 exports.saveCall = async (req, res) => {
     try {
+        console.log("📞 [API] saveCall request received:", JSON.stringify(req.body));
         const { from, to, type, status, duration, callTime } = req.body;
 
         // validation
         if (!from || !to) {
+            console.warn("⚠️ [API] saveCall missing from/to:", { from, to });
             return res.status(400).json({ error: 'Missing from/to user IDs' });
         }
+
+        const User = require('../models/User'); // Ensure User model is loaded
 
         // Fix: resolve users to get phone numbers
         const caller = await User.findById(from);
         const receiver = await User.findById(to);
 
         if (!caller || !receiver) {
+            console.warn("⚠️ [API] saveCall user not found:", { from, to });
             return res.status(404).json({ error: 'User not found' });
         }
 
         // Check Block Status
         const { isBlocked } = require('../utils/blockUtil');
-        if (await isBlocked(from, to)) {
-            return res.status(403).json({ error: 'Call blocked' });
+        /* 
+           Temporarily logging block check but NOT blocking saving of log to see if this is the issue.
+           WhatsApp usually shows call logs even if blocked (as blocked call)? Or maybe not.
+           Actually, if I am blocked by them, I might not see it?
+           Let's just log for now.
+        */
+        const blocked = await isBlocked(from, to);
+        console.log(`🔍 [API] Block status check: ${blocked} (from: ${from}, to: ${to})`);
+
+        if (blocked) {
+            console.warn("🚫 [API] Call blocked, but proceeding to save log for debug purposes (or should we return?)");
+            // return res.status(403).json({ error: 'Call blocked' }); 
         }
 
         const newCall = new Call({
@@ -36,10 +51,10 @@ exports.saveCall = async (req, res) => {
         });
 
         await newCall.save();
-        console.log(`✅ Call saved successfully: ${newCall._id}`);
+        console.log(`✅ [API] Call saved successfully: ${newCall._id}`);
         res.status(201).json({ message: 'Call saved successfully', call: newCall });
     } catch (error) {
-        console.error('Error saving call:', error);
+        console.error('❌ [API] Error saving call:', error);
         res.status(500).json({ error: 'Failed to save call' });
     }
 };

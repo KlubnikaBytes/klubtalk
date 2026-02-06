@@ -473,6 +473,7 @@ class WebrtcService {
      }
 
      // Save Log
+     print("📞 [WebrtcService] endCall: _remoteUserId=$_remoteUserId, _logSaved=$_logSaved, _isCaller=$_isCaller");
      if (_remoteUserId != null && !_logSaved) {
         _logSaved = true;
         final duration = _callStartTime != null 
@@ -485,6 +486,8 @@ class WebrtcService {
            status = _isCaller ? 'missed' : 'rejected'; 
         }
 
+        print("📞 [WebrtcService] Saving call log: status=$status, duration=$duration");
+
         saveCallLog(
            callerId: _isCaller ? AuthService().currentUserId ?? '' : _remoteUserId!,
            receiverId: _isCaller ? _remoteUserId! : AuthService().currentUserId ?? '',
@@ -495,6 +498,8 @@ class WebrtcService {
         
         _callStartTime = null;
         _remoteUserId = null;
+     } else {
+        print("⚠️ [WebrtcService] NOT saving call log. Conditions met? ${_remoteUserId != null} && ${!_logSaved}");
      }
      
      _peerId = null;

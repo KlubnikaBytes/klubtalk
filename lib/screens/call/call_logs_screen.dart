@@ -7,7 +7,9 @@ import 'package:whatsapp_clone/models/call_log_model.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
+import 'package:whatsapp_clone/services/socket_service.dart'; // Added SocketService import
 import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
+import 'dart:async'; // For StreamSubscription
 
 class CallLogsScreen extends StatefulWidget {
   const CallLogsScreen({super.key});
@@ -19,10 +21,11 @@ class CallLogsScreen extends StatefulWidget {
 class _CallLogsScreenState extends State<CallLogsScreen> {
   List<CallLogModel> logs = [];
   bool isLoading = true;
+  StreamSubscription? _socketSub;
 
   @override
   void dispose() {
-    // Explicitly doing nothing as mounted checks handle async gaps
+    _socketSub?.cancel();
     super.dispose();
   }
 
@@ -30,6 +33,16 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   void initState() {
     super.initState();
     _fetchCallLogs();
+    
+    // Auto-refresh on socket events (call end/reject)
+    _socketSub = SocketService().callStream.listen((data) {
+       final event = data['event'];
+       if (event == 'video_call_end' || event == 'video_call_reject' || event == 'incoming-call' || event == 'call_saved') {
+          print("🔄 CallLogsScreen: Received $event. Refreshing logs...");
+          // Add small delay to allow backend to write to DB
+          Future.delayed(const Duration(seconds: 1), _fetchCallLogs);
+       }
+    });
   }
 
   Future<void> _fetchCallLogs() async {
@@ -38,71 +51,36 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
       final userId = AuthService().currentUserId;
 
       if (token == null || userId == null) {
-          print("CallLogsScreen: User ID or Token is null. Cannot fetch logs.");
           if (mounted) setState(() => isLoading = false);
           return;
       }
 
+      print("📋 CallLogsScreen: Fetching logs for userId: $userId");
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/calls/history/$userId'),
         headers: {'Authorization': 'Bearer $token'},
       );
+      print("📋 CallLogsScreen: Response status: ${response.statusCode}");
 
       if (response.statusCode == 200) {
           final List<dynamic> data = jsonDecode(response.body);
+          print("📋 CallLogsScreen: Fetched ${data.length} raw logs");
           
           final rawLogs = data.map((json) => CallLogModel.fromJson(json)).toList();
           final List<CallLogModel> deduplicatedLogs = [];
           
+          
           if (rawLogs.isNotEmpty) {
-             // 1. Sort by time descending to process linearly
+             // 1. Sort by time descending
              rawLogs.sort((a, b) => b.startedAt.compareTo(a.startedAt));
              
-             CallLogModel? current = rawLogs.first;
-             
-             for (int i = 1; i < rawLogs.length; i++) {
-                final next = rawLogs[i];
-                
-                // Fuzzy Match Logic
-                // 1. Same participants (Check if both IDs present found in both)
-                // Normalize IDs set for comparison
-                final currentParts = {current!.callerId, current.receiverId};
-                final nextParts = {next.callerId, next.receiverId};
-                
-                final sameParticipants = currentParts.containsAll(nextParts) && nextParts.containsAll(currentParts);
-                
-                // 2. Time Window (e.g., 10 seconds)
-                final diff = current.startedAt.difference(next.startedAt).inSeconds.abs();
-                final sameTime = diff <= 10;
-                
-                if (sameParticipants && sameTime) {
-                   // MERGE: Keep the "better" one
-                   // Priority: Duration > 0, then Voice > Video (assuming video is default ghost)
-                   
-                   bool keepCurrent = true;
-                   
-                   if (next.duration > 0 && current.duration == 0) {
-                      keepCurrent = false; 
-                   } else if (current.duration == 0 && next.duration == 0) {
-                      if (next.type == 'voice' && current.type == 'video') {
-                         keepCurrent = false;
-                      }
-                   }
-                   
-                   if (keepCurrent) {
-                      // Keep current, discard next (do nothing, next is skipped)
-                   } else {
-                      // Keep next, discard current
-                      current = next;
-                   }
-                } else {
-                   // No match, push current matches deduplicated list
-                   deduplicatedLogs.add(current!);
-                   current = next;
-                }
+             // DEBUG: Print top 3 logs
+             for (var i=0; i< (rawLogs.length > 3 ? 3 : rawLogs.length); i++) {
+                 print("   [$i] ${rawLogs[i].startedAt} - ${rawLogs[i].callerPhone} -> ${rawLogs[i].receiverPhone}");
              }
-             // Add last one 
-             if (current != null) deduplicatedLogs.add(current);
+
+             // SIMPLIFIED: No deduplication for verification
+             deduplicatedLogs.addAll(rawLogs);
           }
           
           if (mounted) {
