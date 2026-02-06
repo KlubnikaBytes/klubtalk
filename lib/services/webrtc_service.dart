@@ -245,7 +245,7 @@ class WebrtcService {
          }
          
          final response = await http.post(
-            Uri.parse('${ApiConfig.baseUrl}/api/calls/reject'),
+            Uri.parse('${ApiConfig.baseUrl}/calls/reject'),
             headers: {
                'Content-Type': 'application/json',
                'Authorization': 'Bearer $token'
