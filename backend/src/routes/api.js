@@ -111,6 +111,7 @@ const callController = require('../controllers/callController');
 
 // --- CALL ROUTES ---
 router.post('/calls/save', verifyToken, callController.saveCall);
+router.post('/calls/clear', callController.clearCallLogs); // 🛠️ DEBUG ROUTE (No Auth)
 router.get('/calls/history/:userId', verifyToken, callController.getCallHistory);
 router.post('/calls/reject', verifyToken, callController.rejectCall); // 🎯 NEW: HTTP Rejection
 router.get('/calls/:callId', verifyToken, callController.getCallById);
