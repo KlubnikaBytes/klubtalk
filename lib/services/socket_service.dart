@@ -77,6 +77,17 @@ class SocketService {
     if (_socket != null && _socket!.connected) return;
     
     print("🔌 SocketService: ensureConnected() called - waiting for connection...");
+    
+    // Check if we need to initialize auth first (Cold Start)
+    if (AuthService().token == null) {
+        print("🔐 SocketService: Token is null, attempting auto-login...");
+        final success = await AuthService().tryAutoLogin();
+        if (!success) {
+           print("❌ SocketService: Auto-login failed, cannot connect socket.");
+           return;
+        }
+    }
+
     connect();
     
     // Wait for connection stream with timeout
