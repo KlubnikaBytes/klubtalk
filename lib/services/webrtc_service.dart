@@ -31,6 +31,15 @@ class WebrtcService {
            case 'video_call_reject':
              print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
              print("🚫 RECEIVED video_call_reject event from ${payload?['from']}");
+             
+             // 🚫 Guard: Don't process our own reject event
+             final currentUserId = AuthService().currentUserId;
+             if (payload?['from'] == currentUserId) {
+                print("⏭️ SKIP: This is our own reject event, ignoring");
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                break;
+             }
+             
              print("🚫 Calling onCallStateChange with 'Rejected'");
              onCallStateChange?.call("Rejected");
              print("🚫 Now calling endCall() to cleanup");
@@ -52,7 +61,13 @@ class WebrtcService {
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
-  MediaStream? _remoteStream; 
+  MediaStream? _remoteStream;
+  
+  // Debounce for reject to prevent duplicate calls
+  DateTime? _lastRejectTime;
+  
+  // Track when pendingDecline was set for debugging
+  DateTime? _pendingDeclineSetTime; 
   
   StreamStateCallback? onLocalStream;
   StreamStateCallback? onRemoteStream;
@@ -190,17 +205,44 @@ class WebrtcService {
   
   // Clean Rejection Helper
   void rejectCall(String to) {
+     final now = DateTime.now();
+     final timestamp = now.toIso8601String();
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-     print("🔻 WebrtcService.rejectCall() called");
-     print("🔻 Rejecting call to: '$to'");
-     print("🔻 Setting pendingDecline = true to block IncomingCallScreen");
-     pendingDecline = true; // Prevent IncomingCallScreen from showing
-     print("🔻 Emitting 'video_call_reject' socket event");
-     SocketService().emit('video_call_reject', {'to': to});
-     print("🔻 Socket event emitted, now calling endCall()");
+     print("🔻 [$timestamp] WebrtcService.rejectCall() ENTRY");
+     print("🔻 [$timestamp] Target: '$to'");
+     print("🔻 [$timestamp] Current pendingDecline: $pendingDecline");
+     
+     // 🚫 DEBOUNCE: Prevent duplicate calls within 2 seconds
+     if (_lastRejectTime != null) {
+        final timeSinceLastReject = now.difference(_lastRejectTime!);
+        print("🔻 [$timestamp] Time since last reject: ${timeSinceLastReject.inMilliseconds}ms");
+        if (timeSinceLastReject.inSeconds < 2) {
+           print("⏭️ [$timestamp] SKIP: rejectCall already executed ${timeSinceLastReject.inMilliseconds}ms ago");
+           print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+           return;
+        }
+     }
+     _lastRejectTime = now;
+     
+     print("🔻 [$timestamp] Setting pendingDecline = true");
+     pendingDecline = true;
+     _pendingDeclineSetTime = now;
+     
+     print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
+     SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
+     
+     print("🔻 [$timestamp] Calling endCall()");
      endCall();
-     pendingDecline = false; // Reset after handling
-     print("🔻 rejectCall() complete");
+     
+     // DON'T reset pendingDecline immediately - keep it set for 3 seconds to block incoming screen
+     Future.delayed(const Duration(seconds: 3), () {
+        final resetTime = DateTime.now().toIso8601String();
+        print("🔻 [$resetTime] Resetting pendingDecline to false (after 3s delay)");
+        pendingDecline = false;
+        _pendingDeclineSetTime = null;
+     });
+     
+     print("🔻 [$timestamp] rejectCall() EXIT (pendingDecline will reset in 3s)");
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   }
 

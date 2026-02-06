@@ -23,6 +23,10 @@ void notificationTapBackground(NotificationResponse notificationResponse) async 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _fln = 
       FlutterLocalNotificationsPlugin();
+  
+  // Debounce mechanism to prevent duplicate action handling
+  static bool _isProcessingAction = false;
+  static DateTime? _lastActionTime;
 
   /// Show Call Notification with Actions
   static Future<void> _showCallNotification(RemoteMessage message) async {
@@ -192,45 +196,61 @@ class NotificationService {
 
   /// Helper to handle notification taps (foreground & launch)
   static Future<void> _handleNotificationResponse(NotificationResponse response) async {
+         final timestamp = DateTime.now().toIso8601String();
          final payload = response.payload;
          final actionId = response.actionId;
          print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-         print("🔍 DEBUG ACTION: _handleNotificationResponse fired");
-         print("🔍 DEBUG ACTION: Action ID: '$actionId'");
-         print("🔍 DEBUG ACTION: Payload: $payload");
+         print("🔍 [$timestamp] NOTIFICATION RESPONSE HANDLER ENTRY");
+         print("🔍 [$timestamp] Action ID: '$actionId'");
+         print("🔍 [$timestamp] Payload: $payload");
+         print("🔍 [$timestamp] _isProcessingAction: $_isProcessingAction");
          print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
          
+         // 🚫 DEBOUNCE: Prevent duplicate processing
+         final now = DateTime.now();
+         if (_isProcessingAction && _lastActionTime != null) {
+            final timeSinceLastAction = now.difference(_lastActionTime!);
+            print("🔍 [$timestamp] Time since last action: ${timeSinceLastAction.inMilliseconds}ms");
+            if (timeSinceLastAction.inSeconds < 2) {
+               print("⏭️ [$timestamp] SKIP: Action already being processed (${timeSinceLastAction.inMilliseconds}ms ago)");
+               return;
+            }
+         }
+         _isProcessingAction = true;
+         _lastActionTime = now;
+         print("🔍 [$timestamp] Set _isProcessingAction = true");
+         
          // 🛑 Stop Ringtone in all cases of interaction
+         print("🔍 [$timestamp] Cancelling call notification and stopping ringtone");
          await cancelCallNotification();
 
          if (payload != null && payload.startsWith('CALL_DATA:')) {
             try {
                final jsonStr = payload.substring('CALL_DATA:'.length);
-               print("🔍 DEBUG ACTION: JSON String: $jsonStr");
+               print("🔍 [$timestamp] Parsing JSON: ${jsonStr.substring(0, 50)}...");
                
                final callData = json.decode(jsonStr) as Map<String, dynamic>;
-               print("🔍 DEBUG ACTION: Parsed callData: $callData");
-               print("🔍 DEBUG ACTION: callData keys: ${callData.keys.toList()}");
                
                // Fix: FCM uses 'callerId', socket uses 'from'
                final callerId = callData['callerId'] ?? callData['from'];
-               print("🔍 DEBUG ACTION: Extracted callerId: '$callerId'");
+               print("🔍 [$timestamp] Extracted callerId: '$callerId'");
 
                if (actionId == 'DECLINE') {
                   print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                  print("🔻 DEBUG ACTION: DECLINE BUTTON PRESSED!");
-                  print("🔻 DEBUG ACTION: Calling rejectCall with callerId: '$callerId'");
+                  print("🔻 [$timestamp] DECLINE ACTION TRIGGERED");
+                  print("🔻 [$timestamp] About to call WebrtcService().rejectCall('$callerId')");
                   print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                   
                   if (callerId == null || callerId.isEmpty) {
-                     print("❌ ERROR: callerId is null or empty! Cannot reject call.");
+                     print("❌ [$timestamp] ERROR: callerId is null or empty!");
                   } else {
                      WebrtcService().rejectCall(callerId);
-                     print("✅ rejectCall() executed");
+                     print("✅ [$timestamp] rejectCall() invoked");
                   }
+                  print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                } 
                else if (actionId == 'ACCEPT') {
-                  print("✅ DEBUG ACTION: executing ACCEPT");
+                  print("✅ [$timestamp] ACCEPT ACTION TRIGGERED");
                   // Trigger WebRTC Accept
                   await WebrtcService().handleIncomingCall(callData);
                   
@@ -261,6 +281,9 @@ class NotificationService {
             print("⚠️ DEBUG ACTION: Payload is null or doesn't start with CALL_DATA:");
          }
          print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+         
+         // Reset processing flag
+         _isProcessingAction = false;
   }
 
   /// Handle remote message (foreground & background)

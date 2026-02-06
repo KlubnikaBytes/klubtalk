@@ -19,14 +19,17 @@ import 'package:http/http.dart' as http;
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/utils/route_observer.dart';
 
-// Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('Background message received: ${message.data}');
 
-  // Update: Initialize Local Notifications for Background Isolation
-  await NotificationService.initialize();
+  // ⚡ OPTIMIZATION: Only initialize NotificationService if we need to show notifications
+  // For call-related messages, initialize; for others, skip to reduce overhead
+  final messageType = message.data['type'];
+  if (messageType == 'call' || messageType == 'call_end') {
+     await NotificationService.initialize();
+  }
   
   // 🎯 HTTP ACK for Delivery (Offline/Background)
   // Ensure we tell the server we got it!
@@ -59,7 +62,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
      }
   }
 
-  await NotificationService.handleRemoteMessage(message);
+  // Only handle call notifications in background
+  if (messageType == 'call' || messageType == 'call_end') {
+     await NotificationService.handleRemoteMessage(message);
+  }
 }
 
 void main() async {
@@ -137,9 +143,16 @@ class _MyAppState extends State<MyApp> {
       // Listen to Call Events
       socketService.callStream.listen((event) async { // Made async
           if (event['event'] == 'video_call_request') {
+             final timestamp = DateTime.now().toIso8601String();
+             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+             print("📞 [$timestamp] SOCKET: video_call_request received");
+             print("📞 [$timestamp] isCallActive: ${WebrtcService().isCallActive}");
+             print("📞 [$timestamp] pendingDecline: ${WebrtcService().pendingDecline}");
+             
              // Guard: Prevent duplicate calls
              if (WebrtcService().isCallActive) {
-                print("Ignored duplicate call request: Call already active");
+                print("⏭️ [$timestamp] SKIP: Call already active");
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 return; 
              }
              
@@ -150,7 +163,7 @@ class _MyAppState extends State<MyApp> {
               // If WebrtcService is waiting for this offer (auto-accept from notification),
               // we process it immediately and DO NOT show Incoming Call Screen.
               if (WebrtcService().pendingAutoAccept) {
-                 print("🚀 Auto-Accepting Call (Cold Start)...");
+                 print("🚀 [$timestamp] Auto-Accepting Call (Cold Start)...");
                  final isVideo = data['callType'] == 'video';
                  
                  // Call full handleIncomingCall with complete data (now includes offer)
@@ -159,7 +172,7 @@ class _MyAppState extends State<MyApp> {
                  
                  // 🧭 NAVIGATE TO ACTIVE CALL SCREEN from Cold Start
                  if (navigatorKey.currentState != null) {
-                    print("🧭 Navigating to CallScreen (Cold Start - initialization complete)...");
+                    print("🧭 [$timestamp] Navigating to CallScreen (Cold Start)");
                     // Use push instead of pushReplacement so user can return
                     navigatorKey.currentState!.push(
                       MaterialPageRoute(
@@ -173,17 +186,21 @@ class _MyAppState extends State<MyApp> {
                       )
                     );
                  }
+                 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                  return;
               }
 
               // 🔻 DECLINE CHECK:
               // If user already declined from notification, skip showing IncomingCallScreen
               if (WebrtcService().pendingDecline) {
-                 print("🔻 Call already declined from notification, ignoring socket event");
+                 print("🔻 [$timestamp] BLOCKED: Call already declined from notification");
+                 print("🔻 [$timestamp] Resetting isCallActive and ignoring socket event");
                  WebrtcService().setCallActive(false); // Reset lock
+                 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                  return;
               }
 
+              print("📞 [$timestamp] Showing IncomingCallScreen");
               if (navigatorKey.currentState != null) {
                  navigatorKey.currentState!.push(
                    MaterialPageRoute(
@@ -204,6 +221,7 @@ class _MyAppState extends State<MyApp> {
                     }
                  });
               }
+              print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
           }
       });
     } catch (e) {

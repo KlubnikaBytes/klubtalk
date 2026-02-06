@@ -340,11 +340,18 @@ exports.init = (server) => {
         });
 
         socket.on("video_call_reject", (data) => {
-            // data: { to: callerId }
-            io.to(data.to).emit("video_call_reject", { from: socket.uid });
+            // data: { to: callerId, from: receiverId }
+            console.log(`📞 Call rejected by ${data.from || socket.uid} to caller ${data.to}`);
+
+            // Emit to caller with the correct from field
+            io.to(data.to).emit("video_call_reject", {
+                from: data.from || socket.uid  // Use data.from if available, fallback to socket.uid
+            });
 
             // Remove from pending (User rejected)
             activeCalls.delete(socket.uid);
+
+            console.log(`✅ Reject event relayed to ${data.to}, activeCalls cleared for ${socket.uid}`);
         });
 
         socket.on("video_call_end", (data) => {
