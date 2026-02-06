@@ -235,10 +235,14 @@ class WebrtcService {
      _declinedCallerId = to; // Track who we declined
      _pendingDeclineSetTime = now;
      
-      // 🌍 HTTP REJECTION (Reliable for Background/Cold Start)
       try {
          print("🔻 [$timestamp] Sending HTTP Rejection to /api/calls/reject");
-         final token = await AuthService().getToken(); // Get valid token
+         final token = AuthService().token ?? await AuthService().storage.read(key: 'jwt_token'); // Get valid token
+         
+         if (token == null) {
+            print("❌ [$timestamp] No token available for HTTP rejection");
+            throw Exception("No auth token");
+         }
          
          final response = await http.post(
             Uri.parse('${ApiConfig.baseUrl}/api/calls/reject'),
