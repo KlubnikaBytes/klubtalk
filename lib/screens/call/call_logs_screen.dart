@@ -65,6 +65,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
       if (response.statusCode == 200) {
           final List<dynamic> data = jsonDecode(response.body);
           print("📋 CallLogsScreen: Fetched ${data.length} raw logs");
+          print("📋 RAW DATA SAMPLE: ${data.isNotEmpty ? jsonEncode(data[0]) : 'Empty'}"); // DEBUG LOG
           
           final rawLogs = data.map((json) => CallLogModel.fromJson(json)).toList();
           final List<CallLogModel> deduplicatedLogs = [];

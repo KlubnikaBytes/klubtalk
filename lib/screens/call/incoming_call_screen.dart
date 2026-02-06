@@ -4,6 +4,7 @@ import 'package:whatsapp_clone/services/webrtc_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/services/notification_service.dart';
+import 'package:whatsapp_clone/screens/chat_list_screen.dart'; // MobileChatLayout
 
 class IncomingCallScreen extends StatefulWidget {
   final String callerName;
@@ -69,7 +70,15 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
 
         // Handle Back Button as Reject
         WebrtcService().rejectCall(widget.callData['from']);
-        if(mounted) Navigator.pop(context);
+        // Handle Back Button as Reject
+        WebrtcService().rejectCall(widget.callData['from']);
+        if(mounted){
+           if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+           } else {
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MobileChatLayout()));
+           }
+        }
       },
       child: Scaffold(
       backgroundColor: const Color(0xFF101D25), // WhatsApp Call Dark BG
@@ -125,8 +134,13 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                              await NotificationService.cancelCallNotification();
                              
                              WebrtcService().rejectCall(widget.callData['from']);
-                             if (mounted && Navigator.canPop(context)) {
-                                Navigator.pop(context);
+                             WebrtcService().rejectCall(widget.callData['from']);
+                             if (mounted) {
+                                if (Navigator.canPop(context)) {
+                                   Navigator.pop(context);
+                                } else {
+                                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MobileChatLayout()));
+                                }
                              }
                           },
                           child: const CircleAvatar(

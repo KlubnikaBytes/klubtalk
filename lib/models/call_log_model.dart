@@ -23,10 +23,10 @@ class CallLogModel {
 
   factory CallLogModel.fromJson(Map<String, dynamic> json) {
     return CallLogModel(
-      id: json['_id'],
-      callerId: json['from']['_id'] ?? json['from'], // Handle populated vs unpopulated
+      id: json['_id'] ?? 'unknown',
+      callerId: (json['from'] is Map ? json['from']['_id'] : json['from']) ?? 'unknown', // Handle populated vs unpopulated vs NULL
       callerPhone: json['callerPhone'] ?? '', 
-      receiverId: json['to']['_id'] ?? json['to'],
+      receiverId: (json['to'] is Map ? json['to']['_id'] : json['to']) ?? 'unknown',
       receiverPhone: json['receiverPhone'] ?? '',
       type: json['type'],
       status: json['status'],

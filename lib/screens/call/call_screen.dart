@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
+import 'package:whatsapp_clone/screens/chat_list_screen.dart'; // MobileChatLayout
 
 class CallScreen extends StatefulWidget {
   final String peerName;
@@ -86,8 +87,8 @@ class _CallScreenState extends State<CallScreen> {
                if (Navigator.canPop(context)) {
                  Navigator.pop(context);
                } else {
-                 print("⚠️ [CallScreen] Cannot pop! Is this the root route?");
-                 // Fallback: Push to Home? 
+                 print("⚠️ [CallScreen] Root route! Navigating to Home...");
+                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MobileChatLayout()));
                }
              }
           });
@@ -245,8 +246,13 @@ class _CallScreenState extends State<CallScreen> {
                    IconButton(
                      onPressed: () {
                         _webrtcService.endCall();
-                        if (mounted && Navigator.canPop(context)) {
-                           Navigator.pop(context);
+                        _webrtcService.endCall();
+                        if (mounted) {
+                           if (Navigator.canPop(context)) {
+                              Navigator.pop(context);
+                           } else {
+                              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MobileChatLayout()));
+                           }
                         }
                      },
                      icon: const Icon(Icons.call_end, color: Colors.white, size: 30),
