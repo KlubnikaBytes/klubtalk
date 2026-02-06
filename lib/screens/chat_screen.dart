@@ -1820,6 +1820,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                         final isMe = data['senderId'] == AuthService().currentUserId;
                         final type = data['type'] ?? 'text';
                         
+                        // DATE BADGE LOGIC
+                        bool showDateBadge = false;
+                        final DateTime currentDate = DateTime.tryParse(data['timestamp'].toString())?.toLocal() ?? DateTime.now();
+                        
+                        if (index == _messages.length - 1) {
+                           showDateBadge = true; // Always show for oldest message
+                        } else {
+                           final nextData = _messages[index + 1]; // Next in list is chronologically previous
+                           final DateTime nextDate = DateTime.tryParse(nextData['timestamp'].toString())?.toLocal() ?? DateTime.now();
+                           showDateBadge = !_isSameDay(currentDate, nextDate);
+                        }
+
                         final content = data['content'] ?? data['text'] ?? '';
                         final mimeType = (data['mimeType'] ?? '').toString().toLowerCase();
                         
@@ -1935,98 +1947,119 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                         }
 
                         // WRAPPER: Swipe to Reply & Reactions
-                        return Dismissible(
-                           key: ValueKey(data['_id'] ?? data['tempId'] ?? DateTime.now().toIso8601String()),
-                           // Fix: Left swipe for Me, Right swipe for Others
-                           direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
-                           dismissThresholds: const {
-                              DismissDirection.startToEnd: 0.2, // Others: Right Swipe
-                              DismissDirection.endToStart: 0.2  // Me: Left Swipe
-                           },
-                           confirmDismiss: (direction) async {
-                              _onSwipeToReply(data);
-                              return false; // Don't actually dismiss
-                           },
-                           background: Container(
-                             alignment: Alignment.centerLeft,
-                             padding: const EdgeInsets.only(left: 20),
-                             color: Colors.transparent, 
-                             child: Icon(Icons.reply, color: Colors.grey[700]), 
-                           ),
-                           secondaryBackground: Container(
-                             alignment: Alignment.centerRight,
-                             padding: const EdgeInsets.only(right: 20),
-                             color: Colors.transparent, 
-                             child: Icon(Icons.reply, color: Colors.grey[700]), 
-                           ),
-                           child: GestureDetector(
-                              onLongPress: () => _showReactionPicker(context, data),
-                              child: Align(
-                                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                     Column(
-                                       crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        return Column(
+                           crossAxisAlignment: CrossAxisAlignment.stretch,
+                           children: [
+                              if (showDateBadge)
+                                 Center(
+                                    child: Container(
+                                       margin: const EdgeInsets.symmetric(vertical: 16), // Extra spacing for badge
+                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                       decoration: BoxDecoration(
+                                          color: const Color(0xFFE1F5FE), // Light Blue for Date
+                                          borderRadius: BorderRadius.circular(8),
+                                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2)]
+                                       ),
+                                       child: Text(
+                                          _getDateLabel(currentDate),
+                                          style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
+                                       ),
+                                    ),
+                                 ),
+                              Dismissible(
+                                 key: ValueKey(data['_id'] ?? data['tempId'] ?? DateTime.now().toIso8601String()),
+                                 // Fix: Left swipe for Me, Right swipe for Others
+                                 direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
+                                 dismissThresholds: const {
+                                    DismissDirection.startToEnd: 0.2, // Others: Right Swipe
+                                    DismissDirection.endToStart: 0.2  // Me: Left Swipe
+                                 },
+                                 confirmDismiss: (direction) async {
+                                    _onSwipeToReply(data);
+                                    return false; // Don't actually dismiss
+                                 },
+                                 background: Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.only(left: 20),
+                                    color: Colors.transparent, 
+                                    child: Icon(Icons.reply, color: Colors.grey[700]), 
+                                 ),
+                                 secondaryBackground: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    color: Colors.transparent, 
+                                    child: Icon(Icons.reply, color: Colors.grey[700]), 
+                                 ),
+                                 child: GestureDetector(
+                                    onLongPress: () => _showReactionPicker(context, data),
+                                    child: Align(
+                                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                    child: Stack(
+                                       clipBehavior: Clip.none,
                                        children: [
-                                          // REPLIED CONTEXT (Above Bubble)
-                                          if (data['replyTo'] != null)
-                                            Container(
-                                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withOpacity(0.05),
-                                                borderRadius: BorderRadius.circular(8),
-                                                border: Border(left: BorderSide(color: const Color(0xFFC92136), width: 3))
-                                              ),
-                                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                    Text("Replied to", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFC92136))),
-                                                    Text(
-                                                      data['replyTo']['content'] ?? 'Media',
-                                                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                                                      style: const TextStyle(fontSize: 12, color: Colors.black87)
-                                                    )
-                                                ]
-                                              )
-                                            ),
+                                          Column(
+                                             crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                             children: [
+                                                // REPLIED CONTEXT (Above Bubble)
+                                                if (data['replyTo'] != null)
+                                                Container(
+                                                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                                   padding: const EdgeInsets.all(6),
+                                                   decoration: BoxDecoration(
+                                                      color: Colors.black.withOpacity(0.05),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border(left: BorderSide(color: const Color(0xFFC92136), width: 3))
+                                                   ),
+                                                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                                                   child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                         Text("Replied to", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFC92136))),
+                                                         Text(
+                                                            data['replyTo']['content'] ?? 'Media',
+                                                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(fontSize: 12, color: Colors.black87)
+                                                         )
+                                                      ]
+                                                   )
+                                                ),
 
-                                          // MAIN BUBBLE
-                                          bubbleContent,
+                                                // MAIN BUBBLE
+                                                bubbleContent,
+                                             ]
+                                          ),
+
+                                          // REACTIONS (Pill at bottom)
+                                          if (data['reactions'] != null && (data['reactions'] as List).isNotEmpty)
+                                             Positioned(
+                                                bottom: -8,
+                                                right: isMe ? 20 : null,
+                                                left: isMe ? null : 20,
+                                                child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                   color: Colors.white,
+                                                   borderRadius: BorderRadius.circular(20),
+                                                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
+                                                   border: Border.all(color: Colors.grey.withOpacity(0.2))
+                                                ),
+                                                child: Row(
+                                                   mainAxisSize: MainAxisSize.min,
+                                                   children: (data['reactions'] as List).take(4).map<Widget>((r) {
+                                                      return Padding(
+                                                         padding: const EdgeInsets.symmetric(horizontal: 1.0),
+                                                         child: Text(r['reaction'] ?? '', style: const TextStyle(fontSize: 12)),
+                                                      );
+                                                   }).toList(),
+                                                )
+                                                )
+                                             )
                                        ]
-                                     ),
-
-                                     // REACTIONS (Pill at bottom)
-                                     if (data['reactions'] != null && (data['reactions'] as List).isNotEmpty)
-                                       Positioned(
-                                          bottom: -8,
-                                          right: isMe ? 20 : null,
-                                          left: isMe ? null : 20,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(20),
-                                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
-                                              border: Border.all(color: Colors.grey.withOpacity(0.2))
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: (data['reactions'] as List).take(4).map<Widget>((r) {
-                                                  return Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 1.0),
-                                                    child: Text(r['reaction'] ?? '', style: const TextStyle(fontSize: 12)),
-                                                  );
-                                              }).toList(),
-                                            )
-                                          )
-                                       )
-                                  ]
-                                )
-                              )
-                           )
+                                    )
+                                    )
+                                 )
+                              ),
+                           ],
                         );
                         },
                       ),
@@ -2083,5 +2116,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
         ),
       ),
     );
+   }
+   bool _isSameDay(DateTime a, DateTime b) {
+      return a.year == b.year && a.month == b.month && a.day == b.day;
+   }
+
+   String _getDateLabel(DateTime date) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+      final dateOnly = DateTime(date.year, date.month, date.day);
+
+      if (dateOnly == today) return 'Today';
+      if (dateOnly == yesterday) return 'Yesterday';
+      return DateFormat('MMMM d, y').format(date);
    }
 }

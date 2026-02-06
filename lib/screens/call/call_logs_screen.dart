@@ -18,7 +18,7 @@ class CallLogsScreen extends StatefulWidget {
   State<CallLogsScreen> createState() => _CallLogsScreenState();
 }
 
-class _CallLogsScreenState extends State<CallLogsScreen> {
+class _CallLogsScreenState extends State<CallLogsScreen> with WidgetsBindingObserver {
   List<CallLogModel> logs = [];
   bool isLoading = true;
   StreamSubscription? _socketSub;
@@ -26,12 +26,30 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
   @override
   void dispose() {
     _socketSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      print("📋 CallLogsScreen: App resumed, refreshing logs...");
+      _fetchCallLogs();
+    }
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    print("📋 CallLogsScreen: Screen activated, refreshing logs...");
+    _fetchCallLogs();
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchCallLogs();
     
     // Auto-refresh on socket events (call end/reject)
@@ -65,7 +83,14 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
       if (response.statusCode == 200) {
           final List<dynamic> data = jsonDecode(response.body);
           print("📋 CallLogsScreen: Fetched ${data.length} raw logs");
-          print("📋 RAW DATA SAMPLE: ${data.isNotEmpty ? jsonEncode(data[0]) : 'Empty'}"); // DEBUG LOG
+          
+          if (data.isNotEmpty) {
+            print("📋 RAW DATA SAMPLE (top 3):");
+            for (var i = 0; i < (data.length > 3 ? 3 : data.length); i++) {
+              final item = data[i];
+              print("   [$i] Raw callTime: ${item['callTime']}, Raw startedAt: ${item['startedAt']}");
+            }
+          }
           
           final rawLogs = data.map((json) => CallLogModel.fromJson(json)).toList();
           final List<CallLogModel> deduplicatedLogs = [];
@@ -75,9 +100,10 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
              // 1. Sort by time descending
              rawLogs.sort((a, b) => b.startedAt.compareTo(a.startedAt));
              
-             // DEBUG: Print top 3 logs
+             // DEBUG: Print top 3 logs AFTER sorting
+             print("📋 PARSED & SORTED (top 3):");
              for (var i=0; i< (rawLogs.length > 3 ? 3 : rawLogs.length); i++) {
-                 print("   [$i] ${rawLogs[i].startedAt} - ${rawLogs[i].callerPhone} -> ${rawLogs[i].receiverPhone}");
+                 print("   [$i] Parsed startedAt: ${rawLogs[i].startedAt} - ${rawLogs[i].callerPhone} -> ${rawLogs[i].receiverPhone}");
              }
 
              // SIMPLIFIED: No deduplication for verification
@@ -147,7 +173,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> {
             return ListTile(
               leading: CircleAvatar(
                 backgroundColor: Colors.grey[200],
-                backgroundImage: const AssetImage('assets/images/strawberry_icon.png'),
+                // backgroundImage: const AssetImage('assets/images/strawberry_icon.png'), // REMOVED: Causing crash
                 child: const Icon(Icons.person, color: Colors.grey),
               ),
               title: Text(

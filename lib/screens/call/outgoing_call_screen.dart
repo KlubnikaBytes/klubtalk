@@ -25,6 +25,7 @@ class OutgoingCallScreen extends StatefulWidget {
 class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   final WebrtcService _webrtcService = WebrtcService();
   String _displayName = "";
+  bool _hasNavigated = false;  // Guard to prevent multiple navigation attempts
 
   @override
   void initState() {
@@ -50,10 +51,15 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
        if (!mounted) return; // Safety check for callback
 
        if (status == "Ended" || status == "Rejected") {
-          if (mounted) Navigator.pop(context);
+          // Guard: Prevent multiple navigation attempts
+          if (!_hasNavigated && mounted && Navigator.canPop(context)) {
+             _hasNavigated = true;
+             Navigator.pop(context);
+          }
        } else if (status == "On Call") {
           // Navigate to Active Call Screen
-          if (mounted) {
+          if (!_hasNavigated && mounted) {
+             _hasNavigated = true;
              Navigator.pushReplacement(
                 context, 
                 MaterialPageRoute(

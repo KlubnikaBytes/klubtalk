@@ -22,6 +22,17 @@ class CallLogModel {
   });
 
   factory CallLogModel.fromJson(Map<String, dynamic> json) {
+    // Robust DateTime parsing with fallback
+    DateTime parseDateTime(dynamic value) {
+      if (value == null) return DateTime.now();
+      try {
+        return DateTime.parse(value.toString()).toLocal();
+      } catch (e) {
+        print('⚠️ Failed to parse DateTime: $value - Error: $e');
+        return DateTime.now();
+      }
+    }
+
     return CallLogModel(
       id: json['_id'] ?? 'unknown',
       callerId: (json['from'] is Map ? json['from']['_id'] : json['from']) ?? 'unknown', // Handle populated vs unpopulated vs NULL
@@ -30,7 +41,7 @@ class CallLogModel {
       receiverPhone: json['receiverPhone'] ?? '',
       type: json['type'],
       status: json['status'],
-      startedAt: json['callTime'] != null ? DateTime.parse(json['callTime']).toLocal() : (json['startedAt'] != null ? DateTime.parse(json['startedAt']).toLocal() : DateTime.now()),
+      startedAt: parseDateTime(json['callTime'] ?? json['startedAt']),
       duration: json['duration'] ?? 0,
     );
   }

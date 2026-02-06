@@ -42,9 +42,17 @@ class WebrtcService {
              
              print("🚫 Calling onCallStateChange with 'Rejected'");
              onCallStateChange?.call("Rejected");
+             
+             // Stop ringtone (since retainState: true skips this in endCall)
+             try {
+               const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop');
+             } catch (e) {
+               print("Ringtone stop error: $e");
+             }
+             
              print("🚫 Now calling endCall() to cleanup");
-             // Cleanly end call state
-             endCall();
+             // Pass retainState=true to prevent second "Ended" callback
+             endCall(retainState: true);
              print("🚫 Call rejection handled");
              print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
              break;
