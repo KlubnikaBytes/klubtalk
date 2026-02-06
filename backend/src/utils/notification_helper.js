@@ -156,9 +156,35 @@ async function sendCallEndNotification(recipientId) {
     }
 }
 
+/**
+ * Send notification to reject call (Caller receives this)
+ * @param {String} recipientId - User ID (The Caller)
+ */
+async function sendCallRejectNotification(recipientId) {
+    try {
+        const recipient = await User.findById(recipientId);
+        if (!recipient || !recipient.fcmToken) return;
+
+        const message = {
+            token: recipient.fcmToken,
+            data: {
+                type: 'call_reject',
+                reason: 'busy'
+            },
+            android: { priority: 'high' }
+        };
+
+        await admin.messaging().send(message);
+        console.log(`Call REJECT notification sent to ${recipientId}`);
+    } catch (error) {
+        console.error('Error sending call reject notification:', error);
+    }
+}
+
 module.exports = {
     sendMessageNotification,
     sendCallNotification,
     sendMessageReadNotification,
     sendCallEndNotification,
+    sendCallRejectNotification,
 };

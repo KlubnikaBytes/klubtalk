@@ -118,6 +118,16 @@ exports.rejectCall = async (req, res) => {
         });
 
         console.log(`   ✅ Socket event emitted via HTTP Handler`);
+
+        // 🚀 FAILSAFE: Send FCM Notification (in case Caller is background/offline)
+        try {
+            const { sendCallRejectNotification } = require('../utils/notification_helper');
+            await sendCallRejectNotification(to);
+            console.log(`   ✅ FCM Reject Notification sent`);
+        } catch (fcmError) {
+            console.error(`   ❌ FCM Reject Error:`, fcmError);
+        }
+
         console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
         res.status(200).json({ message: 'Call rejected' });

@@ -301,6 +301,12 @@ class NotificationService {
     } else if (type == 'call_end') {
       await cancelCallNotification();
       // Logic for Missed Call could go here if we track state
+    } else if (type == 'call_reject') {
+      print("📞 FCM: Received 'call_reject'. Ending call.");
+      // If we are the Caller, this means our call was rejected.
+      // We need to notify WebrtcService to update UI
+      WebrtcService().onCallStateChange?.call("Rejected");
+      WebrtcService().endCall();
     }
   }
 
