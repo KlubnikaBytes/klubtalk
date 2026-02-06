@@ -210,7 +210,7 @@ class WebrtcService {
   }
   
   // Clean Rejection Helper
-  void rejectCall(String to) {
+  Future<void> rejectCall(String to) async {
      final now = DateTime.now();
      final timestamp = now.toIso8601String();
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -235,17 +235,17 @@ class WebrtcService {
      _declinedCallerId = to; // Track who we declined
      _pendingDeclineSetTime = now;
      
-     // CRITICAL FIX: Ensure socket is connected before emitting
-     // We define an async IIFE/Future here because rejectCall signature is void
-     // and we don't want to block the UI update (pendingDecline = true happens immediately above)
-     Future(() async {
+     // CRITICAL FIX: Direct await instead of detached Future
+     try {
         print("🔻 [$timestamp] Ensuring socket connection before emit...");
         await SocketService().ensureConnected();
         
         print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
         SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
         print("✅ [$timestamp] Socket event emitted");
-     });
+     } catch (e) {
+        print("❌ [$timestamp] Error in rejectCall socket emission: $e");
+     }
      
      print("🔻 [$timestamp] Calling endCall()");
      endCall();

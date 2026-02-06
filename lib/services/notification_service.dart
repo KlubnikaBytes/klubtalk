@@ -244,8 +244,9 @@ class NotificationService {
                   if (callerId == null || callerId.isEmpty) {
                      print("❌ [$timestamp] ERROR: callerId is null or empty!");
                   } else {
-                     WebrtcService().rejectCall(callerId);
-                     print("✅ [$timestamp] rejectCall() invoked");
+                     print("⏳ [$timestamp] Awaiting WebrtcService().rejectCall()...");
+                     await WebrtcService().rejectCall(callerId);
+                     print("✅ [$timestamp] rejectCall() completed (returned from await)");
                   }
                   print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                } 

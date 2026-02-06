@@ -74,28 +74,37 @@ class SocketService {
 
   /// Ensure socket is connected before proceeding
   Future<void> ensureConnected() async {
-    if (_socket != null && _socket!.connected) return;
+    final timestamp = DateTime.now().toIso8601String();
+    print("🔌 [$timestamp] SocketService: ensureConnected() CALLED");
     
-    print("🔌 SocketService: ensureConnected() called - waiting for connection...");
+    if (_socket != null && _socket!.connected) {
+       print("🔌 [$timestamp] SocketService: Already connected (Socket ID: ${_socket?.id})");
+       return;
+    }
+    
+    print("🔌 [$timestamp] SocketService: Not connected, checking token...");
     
     // Check if we need to initialize auth first (Cold Start)
     if (AuthService().token == null) {
-        print("🔐 SocketService: Token is null, attempting auto-login...");
+        print("🔐 [$timestamp] SocketService: Token is null, attempting auto-login...");
         final success = await AuthService().tryAutoLogin();
         if (!success) {
-           print("❌ SocketService: Auto-login failed, cannot connect socket.");
+           print("❌ [$timestamp] SocketService: Auto-login failed, cannot connect socket.");
            return;
         }
+        print("🔐 [$timestamp] SocketService: Auto-login SUCCESS");
     }
 
+    print("🔌 [$timestamp] SocketService: Calling connect()...");
     connect();
     
     // Wait for connection stream with timeout
     try {
+      print("⏳ [$timestamp] SocketService: Waiting for connection stream...");
       await connectionStateStream.firstWhere((isConnected) => isConnected).timeout(const Duration(seconds: 5));
-      print("🔌 SocketService: Connected successfully!");
+      print("🔌 [$timestamp] SocketService: CONNECTED SUCCESSFULLY! (Socket ID: ${_socket?.id})");
     } catch (e) {
-      print("❌ SocketService: Connection timed out in ensureConnected()");
+      print("❌ [$timestamp] SocketService: Connection timed out in ensureConnected() - $e");
     }
   }
 
@@ -236,7 +245,12 @@ class SocketService {
 
   // --- Call Actions ---
   void emit(String event, dynamic data) {
-    _socket?.emit(event, data);
+    if (_socket != null && _socket!.connected) {
+       print("📤 [SOCKET] Emitting '$event': $data");
+       _socket?.emit(event, data);
+    } else {
+       print("❌ [SOCKET] Cannot emit '$event'. Socket is disconnected!");
+    }
   }
 
   // --- Room Actions ---

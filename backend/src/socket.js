@@ -340,18 +340,38 @@ exports.init = (server) => {
         });
 
         socket.on("video_call_reject", (data) => {
+            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log(`🔻 [SOCKET] video_call_reject RECEIVED`);
+            console.log(`   From Socket ID: ${socket.id}`);
+            console.log(`   From User ID (in payload): ${data.from}`);
+            console.log(`   From User ID (socket.uid): ${socket.uid}`);
+            console.log(`   Target User ID: ${data.to}`);
+
             // data: { to: callerId, from: receiverId }
-            console.log(`📞 Call rejected by ${data.from || socket.uid} to caller ${data.to}`);
+            const senderId = data.from || socket.uid;
+            console.log(`   Resolved Sender ID: ${senderId}`);
+
+            if (!senderId) {
+                console.error(`❌ [SOCKET] ERROR: Sender ID is missing! Cannot relay reject.`);
+                console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+                return;
+            }
+
+            console.log(`   🔍 Relaying 'video_call_reject' to ${data.to}...`);
 
             // Emit to caller with the correct from field
             io.to(data.to).emit("video_call_reject", {
-                from: data.from || socket.uid  // Use data.from if available, fallback to socket.uid
+                from: senderId
             });
 
             // Remove from pending (User rejected)
-            activeCalls.delete(socket.uid);
+            if (socket.uid) {
+                activeCalls.delete(socket.uid);
+                console.log(`   ✅ Cleared activeCalls for ${socket.uid}`);
+            }
 
-            console.log(`✅ Reject event relayed to ${data.to}, activeCalls cleared for ${socket.uid}`);
+            console.log(`✅ [SOCKET] Reject event relayed successfully`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
         });
 
         socket.on("video_call_end", (data) => {
