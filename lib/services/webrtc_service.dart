@@ -235,8 +235,17 @@ class WebrtcService {
      _declinedCallerId = to; // Track who we declined
      _pendingDeclineSetTime = now;
      
-     print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
-     SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
+     // CRITICAL FIX: Ensure socket is connected before emitting
+     // We define an async IIFE/Future here because rejectCall signature is void
+     // and we don't want to block the UI update (pendingDecline = true happens immediately above)
+     Future(() async {
+        print("🔻 [$timestamp] Ensuring socket connection before emit...");
+        await SocketService().ensureConnected();
+        
+        print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
+        SocketService().emit('video_call_reject', {'to': to, 'from': AuthService().currentUserId});
+        print("✅ [$timestamp] Socket event emitted");
+     });
      
      print("🔻 [$timestamp] Calling endCall()");
      endCall();

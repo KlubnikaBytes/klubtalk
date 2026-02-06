@@ -72,6 +72,22 @@ class SocketService {
     _socket!.connect();
   }
 
+  /// Ensure socket is connected before proceeding
+  Future<void> ensureConnected() async {
+    if (_socket != null && _socket!.connected) return;
+    
+    print("🔌 SocketService: ensureConnected() called - waiting for connection...");
+    connect();
+    
+    // Wait for connection stream with timeout
+    try {
+      await connectionStateStream.firstWhere((isConnected) => isConnected).timeout(const Duration(seconds: 5));
+      print("🔌 SocketService: Connected successfully!");
+    } catch (e) {
+      print("❌ SocketService: Connection timed out in ensureConnected()");
+    }
+  }
+
   void _setupListeners() {
     if (_socket == null) return;
 
