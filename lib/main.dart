@@ -199,6 +199,15 @@ class _MyAppState extends State<MyApp> {
                  print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                  return;
               }
+              
+              // 🔻 ADDITIONAL CHECK: If this caller was recently declined, block them
+              if (WebrtcService().declinedCallerId == data['from']) {
+                 print("🔻 [$timestamp] BLOCKED: This caller (${data['from']}) was already declined");
+                 print("🔻 [$timestamp] Resetting isCallActive and ignoring socket event");
+                 WebrtcService().setCallActive(false); // Reset lock
+                 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                 return;
+              }
 
               print("📞 [$timestamp] Showing IncomingCallScreen");
               if (navigatorKey.currentState != null) {

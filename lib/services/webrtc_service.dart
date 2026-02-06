@@ -67,7 +67,10 @@ class WebrtcService {
   DateTime? _lastRejectTime;
   
   // Track when pendingDecline was set for debugging
-  DateTime? _pendingDeclineSetTime; 
+  DateTime? _pendingDeclineSetTime;
+  
+  // Track declined caller ID to prevent showing IncomingCallScreen
+  String? _declinedCallerId; 
   
   StreamStateCallback? onLocalStream;
   StreamStateCallback? onRemoteStream;
@@ -94,6 +97,9 @@ class WebrtcService {
   bool _isCallActive = false; 
   bool get isCallActive => _isCallActive;
   bool _logSaved = false;
+  
+  // Public getter for declined caller ID
+  String get declinedCallerId => _declinedCallerId ?? '';
 
   void setCallActive(bool active) {
     _isCallActive = active;
@@ -224,8 +230,9 @@ class WebrtcService {
      }
      _lastRejectTime = now;
      
-     print("🔻 [$timestamp] Setting pendingDecline = true");
+     print("🔻 [$timestamp] Setting pendingDecline = true AND tracking declined caller: $to");
      pendingDecline = true;
+     _declinedCallerId = to; // Track who we declined
      _pendingDeclineSetTime = now;
      
      print("🔻 [$timestamp] Emitting 'video_call_reject' socket event");
@@ -234,15 +241,16 @@ class WebrtcService {
      print("🔻 [$timestamp] Calling endCall()");
      endCall();
      
-     // DON'T reset pendingDecline immediately - keep it set for 3 seconds to block incoming screen
-     Future.delayed(const Duration(seconds: 3), () {
+     // DON'T reset pendingDecline immediately - keep it set for 10 seconds for cold start scenarios
+     Future.delayed(const Duration(seconds: 10), () {
         final resetTime = DateTime.now().toIso8601String();
-        print("🔻 [$resetTime] Resetting pendingDecline to false (after 3s delay)");
+        print("🔻 [$resetTime] Resetting pendingDecline and _declinedCallerId (after 10s delay)");
         pendingDecline = false;
+        _declinedCallerId = null;
         _pendingDeclineSetTime = null;
      });
      
-     print("🔻 [$timestamp] rejectCall() EXIT (pendingDecline will reset in 3s)");
+     print("🔻 [$timestamp] rejectCall() EXIT (pendingDecline will reset in 10s)");
      print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   }
 
