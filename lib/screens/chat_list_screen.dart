@@ -602,9 +602,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
         });
         
         // RELEASE DEBUG: Show Success Count
-        ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Debug: Loaded ${chats.length} chats'), duration: const Duration(seconds: 2)),
-        );
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //    SnackBar(content: Text('Debug: Loaded ${chats.length} chats'), duration: const Duration(seconds: 2)),
+        // );
       }
     } catch (e, stack) {
       print("Error loading chats: $e");
