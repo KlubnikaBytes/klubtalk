@@ -14,6 +14,9 @@ router.post('/auth/verify-otp', authController.verifyOtp);
 router.get('/auth/me', verifyToken, authController.getMe);
 router.put('/auth/me', verifyToken, authController.updateProfile);
 router.post('/auth/fcm-token', verifyToken, authController.updateFcmToken);
+router.put('/account/settings', verifyToken, authController.updateAccountSettings);
+router.delete('/account', verifyToken, authController.deleteAccount);
+router.get('/account/info', verifyToken, authController.requestAccountInfo);
 
 
 // router.get('/auth/profile', verifyToken, authController.getProfile); // Removed or remapped to getMe

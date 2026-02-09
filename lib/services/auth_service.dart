@@ -148,6 +148,68 @@ class AuthService {
     }
   }
 
+  // Account Settings Methods
+  Future<void> updateAccountSettings({
+    String? email,
+    bool? securityNotifications,
+    String? twoFactorPin,
+  }) async {
+    final body = <String, dynamic>{};
+    if (email != null) body['email'] = email;
+    if (securityNotifications != null) body['securityNotifications'] = securityNotifications;
+    if (twoFactorPin != null) body['twoFactorPin'] = twoFactorPin;
+
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/account/settings'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200) {
+      // Update local user data with response
+      final updatedData = jsonDecode(response.body);
+      _currentUser = {...?_currentUser, ...updatedData};
+    } else {
+      throw Exception('Failed to update account settings');
+    }
+  }
+
+  Future<void> deleteAccount(String phone) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/account'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'phone': phone}),
+    );
+
+    if (response.statusCode == 200) {
+      await logout();
+    } else {
+      final errorMsg = jsonDecode(response.body)['message'] ?? 'Failed to delete account';
+      throw Exception(errorMsg);
+    }
+  }
+
+  Future<Map<String, dynamic>> getAccountInfo() async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/account/info'),
+      headers: {
+        'Authorization': 'Bearer $_token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get account info');
+    }
+  }
+
   Future<void> logout() async {
     _token = null;
     _currentUser = null;

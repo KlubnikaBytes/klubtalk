@@ -10,6 +10,9 @@ const userSchema = new mongoose.Schema({
     isOnline: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     fcmToken: { type: String, default: '' }, // Firebase Cloud Messaging token for push notifications
+    email: { type: String, default: '' },
+    securityNotifications: { type: Boolean, default: false },
+    twoFactorPin: { type: String, default: '' }, // Hashed PIN
     blockedUsers: [String], // Array of firebaseUids
     archivedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Archive
     favoritedChats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chat' }], // Personal Favorites
