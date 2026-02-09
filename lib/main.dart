@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/auth_wrapper.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:whatsapp_clone/utils/chat_session_store.dart';
 
 import 'package:whatsapp_clone/utils/web_utils.dart'; // Helper for web
 import 'package:whatsapp_clone/services/socket_service.dart';
@@ -74,8 +75,10 @@ void main() async {
   // 1. Initialize Hive (Critical for Cache)
   try {
     await Hive.initFlutter();
+    // Initialize ChatSessionStore to load deleted chats
+    await ChatSessionStore().init(); 
   } catch (e) {
-    print("❌ Hive Init Failed: $e");
+    print("❌ Hive/Store Init Failed: $e");
   }
 
   // 2. Initialize Firebase (Critical for FCM/Auth verification)

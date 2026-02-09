@@ -2,6 +2,7 @@
 // Since we cannot modify the backend, this acts as our client-side database enhancement.
 
 import 'package:flutter/foundation.dart';
+import 'package:whatsapp_clone/services/local_cache_service.dart';
 
 class ChatSessionStore {
   // Singleton pattern not strictly needed if fields are static, but good for listeners.
@@ -51,10 +52,24 @@ class ChatSessionStore {
     markedUnreadChatIds.value = set;
   }
 
+  final _cache = LocalCacheService(); // Add LocalCacheService instance
+
+  Future<void> init() async {
+    try {
+        final deleted = await _cache.getCachedDeletedChatIds();
+        deletedChatIds.value = deleted.toSet();
+    } catch (e) {
+        print("Error initializing ChatSessionStore: $e");
+    }
+  }
+
   void deleteChat(String chatId) {
     var set = Set<String>.from(deletedChatIds.value);
     set.add(chatId);
     deletedChatIds.value = set;
+    
+    // Persist
+    _cache.cacheDeletedChatIds(set.toList());
   }
 
   bool isArchived(String chatId) => archivedChatIds.value.contains(chatId);

@@ -11,12 +11,14 @@ import 'package:whatsapp_clone/widgets/responsive_container.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 
 class StatusViewerScreen extends StatefulWidget {
-  final UserStatus userStatus;
+  final List<UserStatus> allStatuses; // Changed from single UserStatus
+  final int initialIndex;
   final Function(String statusId) onViewStatus;
 
   const StatusViewerScreen({
     super.key, 
-    required this.userStatus,
+    required this.allStatuses,
+    required this.initialIndex,
     required this.onViewStatus,
   });
 
@@ -29,12 +31,16 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
   late AnimationController _animController;
   VideoPlayerController? _videoController;
   
-  int _currentIndex = 0;
+  int _currentUserIndex = 0;
+  int _currentStoryIndex = 0;
   final Duration _imageDuration = const Duration(seconds: 5);
+
+  UserStatus get _currentUserStatus => widget.allStatuses[_currentUserIndex];
 
   @override
   void initState() {
     super.initState();
+    _currentUserIndex = widget.initialIndex;
     _pageController = PageController();
     _animController = AnimationController(vsync: this);
     
@@ -55,9 +61,9 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
     super.dispose();
   }
 
-  void _loadStory(int index) {
-    _currentIndex = index;
-    final status = widget.userStatus.statuses[index];
+  void _loadStory(int storyIndex) {
+    _currentStoryIndex = storyIndex;
+    final status = _currentUserStatus.statuses[storyIndex];
     
     // Mark Viewed
     widget.onViewStatus(status.id);
@@ -68,7 +74,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
     if (status.type == 'video') {
        _videoController = VideoPlayerController.networkUrl(
          Uri.parse(status.content),
-         httpHeaders: const {'Connection': 'keep-alive'}, // Explicit headers
+         httpHeaders: const {'Connection': 'keep-alive'}, 
        )..initialize().then((_) {
             if (mounted) {
               setState(() {});
@@ -77,9 +83,9 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
               _animController.forward(from: 0);
             }
          }).catchError((error) {
-            debugPrint("❌ ERROR loading status video (Work Profile check): $error");
+            debugPrint("❌ ERROR loading status video: $error");
          });
-    } else { // Image or Text
+    } else { 
        _animController.duration = _imageDuration;
        _animController.forward(from: 0);
     }
@@ -87,10 +93,19 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
   }
 
   void _onStoryComplete() {
-    if (_currentIndex < widget.userStatus.statuses.length - 1) {
-       _loadStory(_currentIndex + 1);
+    if (_currentStoryIndex < _currentUserStatus.statuses.length - 1) {
+       // Next Story in Current User
+       _loadStory(_currentStoryIndex + 1);
     } else {
-       Navigator.pop(context); // Close viewer (or auto-nav to next user if implemented)
+       // Next User
+       if (_currentUserIndex < widget.allStatuses.length - 1) {
+          setState(() {
+             _currentUserIndex++;
+             _loadStory(0);
+          });
+       } else {
+          Navigator.pop(context); // Close viewer if last user
+       }
     }
   }
 
@@ -98,10 +113,19 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
     final screenWidth = MediaQuery.of(context).size.width;
     if (details.globalPosition.dx < screenWidth / 3) {
        // Previous
-       if (_currentIndex > 0) {
-          _loadStory(_currentIndex - 1);
+       if (_currentStoryIndex > 0) {
+          _loadStory(_currentStoryIndex - 1);
        } else {
-          _loadStory(0); // Restart first
+          // Previous User
+          if (_currentUserIndex > 0) {
+             setState(() {
+                _currentUserIndex--;
+                // Start from LAST story of previous user
+                _loadStory(_currentUserStatus.statuses.length - 1);
+             });
+          } else {
+             _loadStory(0); // Restart first story of first user
+          }
        }
     } else {
        // Next
@@ -121,8 +145,8 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
-    final status = widget.userStatus.statuses[_currentIndex];
-    final isMe = widget.userStatus.userId == AuthService().currentUserId;
+    final status = _currentUserStatus.statuses[_currentStoryIndex];
+    final isMe = _currentUserStatus.userId == AuthService().currentUserId;
     
     return Scaffold(
       backgroundColor: Colors.black,
@@ -172,7 +196,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
                 children: [
                    // Progress Bars
                    Row(
-                     children: widget.userStatus.statuses.asMap().entries.map((entry) {
+                     children: _currentUserStatus.statuses.asMap().entries.map((entry) {
                         return Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -185,12 +209,12 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
                    // User Info
                    Row(
                      children: [
-                        AvatarWidget(imageUrl: widget.userStatus.userAvatar ?? '', radius: 20),
+                        AvatarWidget(imageUrl: _currentUserStatus.userAvatar ?? '', radius: 20),
                         const SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                             Text(widget.userStatus.userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                             Text(_currentUserStatus.userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                              Text(_formatTime(status.createdAt), style: const TextStyle(color: Colors.white70, fontSize: 12))
                           ],
                         ),
@@ -354,9 +378,9 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> with SingleTick
   }
 
   Widget _buildProgressBar(int index) {
-      if (index < _currentIndex) {
+      if (index < _currentStoryIndex) {
          return Container(height: 2, color: Colors.white);
-      } else if (index > _currentIndex) {
+      } else if (index > _currentStoryIndex) {
          return Container(height: 2, color: Colors.white24);
       } else {
          return AnimatedBuilder(

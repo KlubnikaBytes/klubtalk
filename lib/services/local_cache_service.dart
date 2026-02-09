@@ -82,6 +82,20 @@ class LocalCacheService {
     return null;
   }
 
+  /// DELETED CHATS (PERMANENT)
+  static const _deletedChatsBox = 'deleted_chats_cache';
+
+  Future<void> cacheDeletedChatIds(List<String> ids) async {
+    final box = await Hive.openBox(_deletedChatsBox);
+    await box.put('list', ids);
+  }
+
+  Future<List<String>> getCachedDeletedChatIds() async {
+    final box = await Hive.openBox(_deletedChatsBox);
+    final list = box.get('list', defaultValue: []);
+    return List<String>.from(list);
+  }
+
   /// CLEAR ALL CACHE (optional future use)
   Future<void> clearAll() async {
     await Hive.deleteBoxFromDisk(_contactsBox);
@@ -89,5 +103,6 @@ class LocalCacheService {
     await Hive.deleteBoxFromDisk(_messagesBox);
     await Hive.deleteBoxFromDisk(_statusBox);
     await Hive.deleteBoxFromDisk(_usersBox);
+    await Hive.deleteBoxFromDisk(_deletedChatsBox);
   }
 }

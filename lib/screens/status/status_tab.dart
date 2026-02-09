@@ -165,7 +165,8 @@ class _StatusTabState extends State<StatusTab> {
          if (hasStatus) {
              Navigator.push(context, MaterialPageRoute(
                builder: (_) => StatusViewerScreen(
-                   userStatus: myStatus!, 
+                   allStatuses: [myStatus!], 
+                   initialIndex: 0, 
                    onViewStatus: (id) => _statusService.viewStatus(id)
                )
              ));
@@ -294,10 +295,27 @@ class StatusTile extends StatelessWidget {
       ),
       title: Text(userStatus.userName, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(_formatTime(userStatus.lastUpdate)),
-      onTap: () {
-         Navigator.push(context, MaterialPageRoute(
+           onTap: () {
+          // Pass the list this status belongs to (Recent, Viewed, Muted?)
+          // We need to know which list context we are in.
+          // For simplicity, we can merge all relevant lists or pass the specific list context.
+          // Since we want next/prev in the same "section", let's reconstruct the list context.
+          
+          List<UserStatus> contextList;
+          if (isViewed) {
+             contextList = StatusService().viewedUpdates;
+          } else if (userStatus.isMuted) {
+             contextList = StatusService().mutedUpdates;
+          } else {
+             contextList = StatusService().recentUpdates;
+          }
+          
+          final index = contextList.indexOf(userStatus);
+          
+          Navigator.push(context, MaterialPageRoute(
            builder: (_) => StatusViewerScreen(
-             userStatus: userStatus,
+             allStatuses: contextList,
+             initialIndex: index != -1 ? index : 0,
              onViewStatus: StatusService().viewStatus
            )
          )).then((_) => onUpdate?.call());

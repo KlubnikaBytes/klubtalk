@@ -1883,19 +1883,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                              decoration: BoxDecoration(
-                               color: isMe ? const Color(0xFFC92136).withOpacity(0.95) : Colors.white.withOpacity(0.95),
+                               // SENDER: Right side, Red Color
+                               // RECEIVER: Left side, White Color
+                               color: isMe ? const Color(0xFFC92136) : Colors.white, 
                                borderRadius: BorderRadius.only(
-                                 topLeft: const Radius.circular(20),
-                                 topRight: const Radius.circular(20),
-                                 bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(4),
-                                 bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(20),
-                               ),
-                               border: Border.all(
-                                 color: Colors.white.withOpacity(0.3),
-                                 width: 0.5,
+                                 topLeft: const Radius.circular(16),
+                                 topRight: const Radius.circular(16),
+                                 bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
+                                 bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
                                ),
                                boxShadow: [
-                                 BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))
+                                 BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 1))
                                ],
                              ),
                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
@@ -1968,11 +1966,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                                  ),
                               Dismissible(
                                  key: ValueKey(data['_id'] ?? data['tempId'] ?? DateTime.now().toIso8601String()),
-                                 // Fix: Left swipe for Me, Right swipe for Others
+                                 // SWIPE LOGIC MATCHING REQUEST:
+                                 // SENDER (isMe) -> Right to Left (endToStart)
+                                 // RECEIVER (!isMe) -> Left to Right (startToEnd)
                                  direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
                                  dismissThresholds: const {
-                                    DismissDirection.startToEnd: 0.2, // Others: Right Swipe
-                                    DismissDirection.endToStart: 0.2  // Me: Left Swipe
+                                    DismissDirection.startToEnd: 0.2, 
+                                    DismissDirection.endToStart: 0.2 
                                  },
                                  confirmDismiss: (direction) async {
                                     _onSwipeToReply(data);
