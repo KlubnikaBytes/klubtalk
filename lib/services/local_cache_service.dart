@@ -5,6 +5,7 @@ class LocalCacheService {
   static const _chatsBox = 'chats_cache';
   static const _messagesBox = 'messages_cache';
   static const _statusBox = 'status_cache';
+  static const _callLogsBox = 'call_logs_cache';
 
   /// CONTACTS (PERMANENT)
   Future<void> cacheContacts(List contacts) async {
@@ -25,7 +26,11 @@ class LocalCacheService {
 
   Future<List> getCachedChats() async {
     final box = await Hive.openBox(_chatsBox);
-    return box.get('list', defaultValue: []);
+    final rawList = box.get('list', defaultValue: []);
+    // ⚡ Cast to proper type to avoid Map<dynamic, dynamic> error
+    return List<Map<String, dynamic>>.from(
+      (rawList as List).map((item) => Map<String, dynamic>.from(item as Map))
+    );
   }
 
   /// MESSAGES (PER CHAT PERMANENT)
@@ -96,6 +101,20 @@ class LocalCacheService {
     return List<String>.from(list);
   }
 
+  /// CALL LOGS (PERMANENT)
+  Future<void> cacheCallLogs(List logs) async {
+    final box = await Hive.openBox(_callLogsBox);
+    await box.put('list', logs);
+  }
+
+  Future<List> getCachedCallLogs() async {
+    final box = await Hive.openBox(_callLogsBox);
+    final rawList = box.get('list', defaultValue: []);
+    return List<Map<String, dynamic>>.from(
+      (rawList as List).map((item) => Map<String, dynamic>.from(item as Map))
+    );
+  }
+
   /// CLEAR ALL CACHE (optional future use)
   Future<void> clearAll() async {
     await Hive.deleteBoxFromDisk(_contactsBox);
@@ -104,5 +123,6 @@ class LocalCacheService {
     await Hive.deleteBoxFromDisk(_statusBox);
     await Hive.deleteBoxFromDisk(_usersBox);
     await Hive.deleteBoxFromDisk(_deletedChatsBox);
+    await Hive.deleteBoxFromDisk(_callLogsBox);
   }
 }

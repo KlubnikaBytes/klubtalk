@@ -8,6 +8,9 @@ def configureNamespace = { project ->
                 }
                 namespace packageName
             }
+            if (compileSdkVersion == null) {
+                compileSdkVersion 34
+            }
         }
     }
 }

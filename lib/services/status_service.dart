@@ -65,15 +65,20 @@ class StatusService {
     );
   }
 
-  // Get Feed (with cache-first pattern and 24-hour expiry)
+  // Get Feed (cache-only with 24h expiry)
   Future<List<dynamic>> getFeed() async {
     try {
       final token = await _getToken();
       
-      // 1️⃣ Load instantly from cache (auto-expires after 24h)
+      // 1️⃣ Load from cache (auto-expires after 24h)
       final cachedStatus = await _cache.getCachedStatus();
       
-      // 2️⃣ Fetch from server in background
+      if (cachedStatus.isNotEmpty) {
+          // ✅ Cache exists and not expired - use it and SKIP API call
+          return cachedStatus;
+      }
+      
+      // 2️⃣ Cache empty or expired - fetch from API
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/status/feed'),
         headers: {'Authorization': 'Bearer $token'},
@@ -87,12 +92,12 @@ class StatusService {
         
         return feedData;
       } else {
-        // If API fails, return cached data (if not expired)
-        return cachedStatus;
+        // If API fails, return empty (cache was already expired)
+        return [];
       }
     } catch (e) {
       print('Error fetching status feed: $e');
-      // Return cached data on error (if not expired)
+      // Return cached data even if expired (offline support)
       try {
         return await _cache.getCachedStatus();
       } catch (_) {

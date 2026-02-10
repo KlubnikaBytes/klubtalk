@@ -5,6 +5,7 @@ import 'package:whatsapp_clone/services/community_service.dart';
 import 'package:whatsapp_clone/screens/chat_screen.dart'; // To open group chat
 import 'package:whatsapp_clone/models/project_models.dart'; // for Chat model mapping if needed
 import 'package:whatsapp_clone/config/api_config.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class CommunityHomeScreen extends StatefulWidget {
   final String communityId;
@@ -38,7 +39,7 @@ class _CommunityHomeScreenState extends State<CommunityHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoading) return const Scaffold(body: ChatListSkeleton());
     if (_community == null) return const Scaffold(body: Center(child: Text("Community not found")));
 
     return Scaffold(

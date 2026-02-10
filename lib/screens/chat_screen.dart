@@ -37,6 +37,7 @@ import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 import 'package:whatsapp_clone/screens/contact_info_screen.dart';
 import 'package:whatsapp_clone/utils/route_observer.dart';
 import 'package:whatsapp_clone/main.dart' show scaffoldMessengerKey;
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class ChatScreen extends StatefulWidget {
   final Contact? contact;
@@ -554,36 +555,58 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
 
   Future<void> _loadMessages({bool updateLoading = true}) async {
     try {
-      if (updateLoading) {
-        setState(() => _isLoading = true);
+      // 1. Load from cache
+      final cached = await _chatService.getCachedMessagesOnly(widget.chatId);
+      
+      if (cached.isNotEmpty) {
+          // ✅ Cache exists - use it and SKIP API call
+          if (mounted) {
+              print("🎨 LOAD: Loaded ${cached.length} messages from cache (skipping API)");
+              setState(() {
+                _messages = cached.reversed.toList();
+                _isLoading = false;
+              });
+              Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
+              
+              // Cancel notifications for cached messages
+              for (var msg in cached) {
+                 if (msg['senderId'] != AuthService().currentUserId) {
+                    NotificationService.cancelMessageNotification(msg['_id']);
+                 }
+              }
+          }
+          return; // ⚡ Stop here - no API call!
       }
-      final messages = await _chatService.getMessages(widget.chatId);
-      if (mounted && updateLoading) {
-        print("🎨 LOAD: Messages loaded successfully - count=${messages.length}, triggering setState");
+      
+      // 2. No cache? Fetch from API (first time only)
+      if (mounted) setState(() => _isLoading = true);
+      
+      final messages = await _chatService.fetchRemoteMessages(widget.chatId);
+      
+      if (mounted) {
+        print("🎨 LOAD: Fetched ${messages.length} messages from API");
         setState(() {
-          _messages = messages.reversed.toList(); // Store Newest First
+          _messages = messages.reversed.toList();
           _isLoading = false;
         });
         
-        // Cancel notifications for these messages since we are viewing them
+        // Cancel notifications
         for (var msg in messages) {
            if (msg['senderId'] != AuthService().currentUserId) {
-              // Cancel notification for this message
               NotificationService.cancelMessageNotification(msg['_id']);
            }
         }
 
         if (updateLoading) {
-             // If newest is at 0, and we use reverse list view, we are already at 0 scroll offset usually?
-             // But force scroll to 0 (bottom) anyway
-             Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+             Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
         }
       }
     } catch (e) {
       print('Error loading messages: $e');
       if (mounted && updateLoading) {
-        print("🎨 LOAD: Message loading failed - error=$e, triggering setState");
-        setState(() => _isLoading = false);
+        if (_messages.isEmpty) {
+            setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -1805,7 +1828,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                     )
                   : const BoxDecoration(color: Color(0xFFFBEDEF)), // Default Pink
               child: _isLoading 
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const ChatScreenSkeleton()
                   : GestureDetector(
                       onTap: () {
                          _focusNode.unfocus();

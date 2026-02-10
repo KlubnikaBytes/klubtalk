@@ -1,4 +1,4 @@
-package com.example.whatsapp_clone
+package com.klubnikabytes.kchat
 
 import android.app.Service
 import android.content.Intent
@@ -38,8 +38,8 @@ class RingtoneService : Service() {
     }
     
     companion object {
-        const val ACTION_START_RINGTONE = "com.example.whatsapp_clone.START_RINGTONE"
-        const val ACTION_STOP_RINGTONE = "com.example.whatsapp_clone.STOP_RINGTONE"
+        const val ACTION_START_RINGTONE = "com.klubnikabytes.kchat.START_RINGTONE"
+        const val ACTION_STOP_RINGTONE = "com.klubnikabytes.kchat.STOP_RINGTONE"
         const val EXTRA_RINGTONE_URI = "ringtone_uri"
     }
 }

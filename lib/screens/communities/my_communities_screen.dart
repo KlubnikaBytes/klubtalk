@@ -5,6 +5,7 @@ import 'package:whatsapp_clone/screens/communities/community_home_screen.dart';
 import 'package:whatsapp_clone/screens/communities/create_community_screen.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/widgets/responsive_container.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class MyCommunitiesScreen extends StatefulWidget {
   const MyCommunitiesScreen({super.key});
@@ -36,7 +37,7 @@ class _MyCommunitiesScreenState extends State<MyCommunitiesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const ChatListSkeleton();
 
     if (_communities.isEmpty) {
       return Center(

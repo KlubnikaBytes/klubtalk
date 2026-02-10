@@ -11,6 +11,7 @@ import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 
 import 'package:whatsapp_clone/screens/add_contact_screen.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 import 'package:whatsapp_clone/screens/group_participant_select_screen.dart';
 import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart'; // NEW
@@ -91,11 +92,30 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
   }
 
   Future<void> _fetchContacts() async {
-    setState(() => _isLoading = true);
+    // 1. Load Cache Immediately
+    if (mounted) {
+       final cachedUsers = await _contactService.getCachedRegisteredUsersOnly();
+       // We can also load cached chats/groups if available
+       final cachedChats = await _chatService.getCachedChatsOnly(); 
+       final cachedGroups = cachedChats.where((c) => c['isGroup'] == true).toList();
+       
+       if (cachedUsers.isNotEmpty || cachedGroups.isNotEmpty) {
+           setState(() {
+               _registeredUsers = cachedUsers;
+               _myGroups = cachedGroups;
+               _isLoading = false;
+           });
+       } else {
+           setState(() => _isLoading = true);
+       }
+    }
     
     try {
-      // 1. Fetch Groups (Parallel)
-      final chatsFuture = _chatService.getMyChats();
+      // 1. Fetch Groups (Remote)
+      // We can use fetchRemoteChats but getMyChats handles cache update too.
+      // Use standard getMyChats which triggers bg fetch now or use split?
+      // Let's use fetchRemoteChats for clarity if we want forced update.
+      final chats = await _chatService.fetchRemoteChats();
       
       // 2. Fetch Device Contacts if permission granted
       List<Contact> deviceContacts = [];
@@ -125,30 +145,44 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
                   // Unregistered phones returned from backend (normalized)
                   final List<dynamic> unreg = syncResult['unregistered'];
                   unregisteredPhones = unreg.cast<String>();
+                  
+                  // Update cache with these specific registered users? 
+                  // Actually getRegisteredUsers returns ALL users usually in this app logic?
+                  // No, logic was to get ALL users then match. 
+                  // But syncContacts is better.
+                  // Wait, original code called `_contactService.getRegisteredUsers()` in FutureBuilder below!
+                  // AND it called `_fetchContacts`?
+                  // The `build` method used a FutureBuilder on `getRegisteredUsers`!
+                  // That conflicts with `_fetchContacts` logic here which seems to try to do the same?
+                  // Ah, `_fetchContacts` populates `_registeredUsers` state. 
+                  // But the `build` method IGNORES `_registeredUsers` and uses FutureBuilder!
+                  // I MUST FIX THIS. The previous code was schizophrenic. 
+                  // I will remove FutureBuilder in `build` and use `_registeredUsers` state.
               }
+          } else {
+              // If no device contacts (or Web), fallback to bringing all users?
+              // Original code in build used `getRegisteredUsers`.
+              registeredUsers = await _contactService.fetchRemoteRegisteredUsers();
           }
       } catch (e) {
           print('Sync warning: $e');
+          // Fallback
+          registeredUsers = await _contactService.fetchRemoteRegisteredUsers();
       }
 
-      final chats = await chatsFuture;
       final groups = chats.where((c) => c['isGroup'] == true).toList();
 
       if (mounted) {
         setState(() {
           _registeredUsers = registeredUsers;
           _myGroups = groups;
-          // Filter device contacts to only those who are NOT registered
-          // We can match by phone number to be precise, or just use the device list as source for invites
-          // Ideally, we show "Invite" for anyone not in registeredUsers.
-          // Let's store ALL device contacts, but mark them in the UI logic.
           _deviceContacts = deviceContacts; 
           _isLoading = false;
         });
       }
     } catch (e) {
       print('Error loading data: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && _registeredUsers.isEmpty) setState(() => _isLoading = false);
     }
   }
 
@@ -317,13 +351,12 @@ class _NewChatScreenState extends State<NewChatScreen> with WidgetsBindingObserv
             },
           )
         : null,
-      body: FutureBuilder<List<UserModel>>(
-        future: _contactService.getRegisteredUsers(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-             return const Center(child: CircularProgressIndicator());
+      body: Builder(
+        builder: (context) {
+          if (_isLoading && _registeredUsers.isEmpty && _myGroups.isEmpty && _deviceContacts.isEmpty) {
+             return const ContactListSkeleton();
           }
-          final registeredUsers = snapshot.data ?? [];
+          final registeredUsers = _registeredUsers;
 
           // WEB FALLBACK
           if (kIsWeb) {

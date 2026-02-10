@@ -8,6 +8,7 @@ import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/services/chat_service.dart'; // For Groups
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/models/contact.dart' as app_contact;
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class GroupParticipantSelectScreen extends StatefulWidget {
   final bool isCommunity;
@@ -235,7 +236,7 @@ class _GroupParticipantSelectScreenState extends State<GroupParticipantSelectScr
         ],
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator()) 
+          ? const ContactListSkeleton() 
           : validUsers.isEmpty 
               ? Center(
                   child: Column(

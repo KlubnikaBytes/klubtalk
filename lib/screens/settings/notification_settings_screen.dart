@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -10,7 +11,7 @@ class NotificationSettingsScreen extends StatefulWidget {
 }
 
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
-  static const _channel = MethodChannel('com.example.whatsapp_clone/ringtone');
+  static const _channel = MethodChannel('com.klubnikabytes.kchat/ringtone');
 
   // Preferences Keys
   static const _keyConversationTones = 'conversation_tones';
@@ -170,7 +171,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return const Scaffold(body: SettingsSkeleton());
 
     return Scaffold(
       appBar: AppBar(

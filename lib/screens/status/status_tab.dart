@@ -6,6 +6,7 @@ import 'package:whatsapp_clone/models/status_model.dart';
 import 'package:whatsapp_clone/services/status_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 // Screens
 import 'package:whatsapp_clone/screens/status/text_status_screen.dart';
@@ -44,7 +45,7 @@ class _StatusTabState extends State<StatusTab> {
   @override
   Widget build(BuildContext context) {
     if (_statusService.isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFC92136)));
+      return const StatusListSkeleton();
     }
 
     return Scaffold( 

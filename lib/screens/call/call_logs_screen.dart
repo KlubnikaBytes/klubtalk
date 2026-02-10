@@ -8,6 +8,8 @@ import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 import 'package:whatsapp_clone/services/socket_service.dart'; // Added SocketService import
+import 'package:whatsapp_clone/services/local_cache_service.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 import 'package:whatsapp_clone/screens/call/outgoing_call_screen.dart';
 import 'dart:async'; // For StreamSubscription
 
@@ -63,17 +65,38 @@ class _CallLogsScreenState extends State<CallLogsScreen> with WidgetsBindingObse
     });
   }
 
+
   Future<void> _fetchCallLogs() async {
     try {
       final token = AuthService().token;
       final userId = AuthService().currentUserId;
+      final cache = LocalCacheService();
 
       if (token == null || userId == null) {
           if (mounted) setState(() => isLoading = false);
           return;
       }
 
-      print("📋 CallLogsScreen: Fetching logs for userId: $userId");
+      // 1. Load from cache
+      final cachedData = await cache.getCachedCallLogs();
+      
+      if (cachedData.isNotEmpty) {
+         // ✅ Cache exists - use it and SKIP API call
+         print("📋 CallLogsScreen: Loaded ${cachedData.length} logs from cache (skipping API)");
+         final cachedLogs = cachedData.map((json) => CallLogModel.fromJson(json)).toList();
+         if (mounted) {
+            setState(() {
+              logs = cachedLogs;
+              isLoading = false;
+            });
+         }
+         return; // ⚡ Stop here - no API call!
+      }
+
+      // 2. No cache? Fetch from API (first time only)
+      print("📋 CallLogsScreen: No cache found, fetching from API...");
+      if (mounted) setState(() => isLoading = true);
+
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/calls/history/$userId'),
         headers: {'Authorization': 'Bearer $token'},
@@ -82,31 +105,17 @@ class _CallLogsScreenState extends State<CallLogsScreen> with WidgetsBindingObse
 
       if (response.statusCode == 200) {
           final List<dynamic> data = jsonDecode(response.body);
-          print("📋 CallLogsScreen: Fetched ${data.length} raw logs");
+          print("📋 CallLogsScreen: Fetched ${data.length} logs from API");
           
-          if (data.isNotEmpty) {
-            print("📋 RAW DATA SAMPLE (top 3):");
-            for (var i = 0; i < (data.length > 3 ? 3 : data.length); i++) {
-              final item = data[i];
-              print("   [$i] Raw callTime: ${item['callTime']}, Raw startedAt: ${item['startedAt']}");
-            }
-          }
+          // Save to cache for next time
+          await cache.cacheCallLogs(data);
           
           final rawLogs = data.map((json) => CallLogModel.fromJson(json)).toList();
           final List<CallLogModel> deduplicatedLogs = [];
           
-          
           if (rawLogs.isNotEmpty) {
-             // 1. Sort by time descending
+             // Sort by time descending
              rawLogs.sort((a, b) => b.startedAt.compareTo(a.startedAt));
-             
-             // DEBUG: Print top 3 logs AFTER sorting
-             print("📋 PARSED & SORTED (top 3):");
-             for (var i=0; i< (rawLogs.length > 3 ? 3 : rawLogs.length); i++) {
-                 print("   [$i] Parsed startedAt: ${rawLogs[i].startedAt} - ${rawLogs[i].callerPhone} -> ${rawLogs[i].receiverPhone}");
-             }
-
-             // SIMPLIFIED: No deduplication for verification
              deduplicatedLogs.addAll(rawLogs);
           }
           
@@ -126,7 +135,7 @@ class _CallLogsScreenState extends State<CallLogsScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(backgroundColor: Colors.white, body: CallLogSkeleton());
     }
 
     if (logs.isEmpty) {

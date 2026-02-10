@@ -25,6 +25,7 @@ import 'package:whatsapp_clone/screens/call/call_logs_screen.dart';
 import 'package:whatsapp_clone/widgets/navigation_panel.dart';
 import 'package:whatsapp_clone/screens/communities/my_communities_screen.dart';
 import 'package:whatsapp_clone/screens/communities/create_community_screen.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class MobileChatLayout extends StatefulWidget {
   final bool isWeb;
@@ -548,7 +549,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     SocketService().connectionStateStream.listen((isConnected) {
         if (isConnected && mounted) {
             print("ChatListScreen: Socket reconnected. Refreshing chats...");
-            _loadChats(updateLoading: false);
+            _loadChats(updateLoading: false, forceRefresh: true); // Force API call to get missed data
         }
     });
   }
@@ -588,40 +589,47 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.dispose();
   }
 
-  Future<void> _loadChats({bool updateLoading = true}) async {
+  Future<void> _loadChats({bool updateLoading = true, bool forceRefresh = false}) async {
     try {
-      if (updateLoading && mounted) setState(() => _isLoading = true);
+      print("📊 ChatListScreen: _loadChats called (updateLoading=$updateLoading, forceRefresh=$forceRefresh)");
       
-      final chats = await _chatService.getMyChats();
-      // User requested NOT to hide blocked chats, so we display all.
+      // 1. Load from cache
+      final cached = await _chatService.getCachedChatsOnly();
+      print("📊 ChatListScreen: Found ${cached.length} chats in cache");
+      
+      if (cached.isNotEmpty && !forceRefresh) {
+          // ✅ Cache exists and no force refresh - use it and SKIP API call
+          print("📊 ChatListScreen: Using cached data, SKIPPING API call");
+          if (mounted) {
+             setState(() {
+               _chats = cached;
+               _isLoading = false;
+             });
+          }
+          return; // ⚡ Stop here - no API call!
+      }
+      
+      // 2. No cache or force refresh? Fetch from API
+      print("📊 ChatListScreen: ${cached.isEmpty ? 'No cache found' : 'Force refresh'}, calling API...");
+      if (mounted && updateLoading) setState(() => _isLoading = true);
+      
+      final chats = await _chatService.fetchRemoteChats();
+      print("📊 ChatListScreen: Fetched ${chats.length} chats from API");
       
       if (mounted) {
         setState(() {
           _chats = chats;
           _isLoading = false;
         });
-        
-        // RELEASE DEBUG: Show Success Count
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //    SnackBar(content: Text('Debug: Loaded ${chats.length} chats'), duration: const Duration(seconds: 2)),
-        // );
       }
     } catch (e, stack) {
       print("Error loading chats: $e");
       if (mounted && updateLoading) setState(() => _isLoading = false);
       
-      // RELEASE DEBUG: Show Error
-      if (mounted) {
-         showDialog(
-           context: context,
-           builder: (context) => AlertDialog(
-             title: const Text("Chat Load Error"),
-             content: SingleChildScrollView(child: Text("Error: $e\n\nStack: $stack")),
-             actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))
-             ],
-           )
-         );
+      // Only show error if we have NO data at all
+      if (mounted && _chats.isEmpty) {
+         // Optional: Show snackbar instead of dialog to be less intrusive
+         // ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to load chats: $e")));
       }
     }
   }
@@ -684,7 +692,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const ChatListSkeleton();
 
     // Listen to store changes to trigger rebuilds
     return Scaffold(

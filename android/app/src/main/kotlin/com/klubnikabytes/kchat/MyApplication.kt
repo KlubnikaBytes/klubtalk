@@ -1,4 +1,4 @@
-package com.example.whatsapp_clone
+package com.klubnikabytes.kchat
 
 import android.app.Application
 import android.content.Context
@@ -32,7 +32,7 @@ class MyApplication : Application() {
     }
     
     private fun setupBroadcastChannel(engine: FlutterEngine) {
-        MethodChannel(engine.dartExecutor.binaryMessenger, "com.example.whatsapp_clone/broadcast")
+        MethodChannel(engine.dartExecutor.binaryMessenger, "com.klubnikabytes.kchat/broadcast")
             .setMethodCallHandler { call, result ->
                 Log.d("BroadcastChannel", "📨 Method called: ${call.method}")
                 
@@ -41,7 +41,7 @@ class MyApplication : Application() {
                         val ringtoneUri = call.argument<String>("ringtoneUri") ?: ""
                         Log.i("BroadcastChannel", "🎵 Sending CALL_INCOMING broadcast with URI: $ringtoneUri")
                         
-                        val intent = Intent("com.example.whatsapp_clone.CALL_INCOMING")
+                        val intent = Intent("com.klubnikabytes.kchat.CALL_INCOMING")
                         intent.setPackage(packageName)
                         intent.putExtra("ringtone_uri", ringtoneUri)
                         sendBroadcast(intent)
@@ -52,7 +52,7 @@ class MyApplication : Application() {
                     "sendCallStop" -> {
                         Log.i("BroadcastChannel", "🛑 Sending CALL_STOP broadcast")
                         
-                        val intent = Intent("com.example.whatsapp_clone.CALL_STOP")
+                        val intent = Intent("com.klubnikabytes.kchat.CALL_STOP")
                         intent.setPackage(packageName)
                         sendBroadcast(intent)
                         

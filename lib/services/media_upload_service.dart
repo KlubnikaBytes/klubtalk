@@ -105,7 +105,7 @@ class MediaUploadService {
       // NATIVE: Check for content:// URI (Scoped Storage Fix)
       if (path.startsWith('content://')) {
         try {
-           const platform = MethodChannel('com.example.whatsapp_clone/storage');
+           const platform = MethodChannel('com.klubnikabytes.kchat/storage');
            final String? resolvedPath = await platform.invokeMethod('resolveContentUri', {'uri': path});
            if (resolvedPath != null) {
              path = resolvedPath;

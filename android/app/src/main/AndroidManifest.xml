@@ -62,8 +62,8 @@
             android:name=".CallNotificationReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.example.whatsapp_clone.CALL_INCOMING" />
-                <action android:name="com.example.whatsapp_clone.CALL_STOP" />
+                <action android:name="com.klubnikabytes.kchat.CALL_INCOMING" />
+                <action android:name="com.klubnikabytes.kchat.CALL_STOP" />
             </intent-filter>
         </receiver>
         

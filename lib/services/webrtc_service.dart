@@ -45,7 +45,7 @@ class WebrtcService {
              
              // Stop ringtone (since retainState: true skips this in endCall)
              try {
-               const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop');
+               const MethodChannel('com.klubnikabytes.kchat/ringtone').invokeMethod('stop');
              } catch (e) {
                print("Ringtone stop error: $e");
              }
@@ -206,7 +206,7 @@ class WebrtcService {
       
       // 🎵 Play Outgoing Ringtone (Native)
       try {
-        const platform = MethodChannel('com.example.whatsapp_clone/ringtone');
+        const platform = MethodChannel('com.klubnikabytes.kchat/ringtone');
         await platform.invokeMethod('playOutgoing');
       } catch (e) {
         print("Ringtone Error: $e");
@@ -407,7 +407,7 @@ class WebrtcService {
          );
          onCallStateChange?.call("On Call");
          _callStartTime = DateTime.now();
-         const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop'); // 🛑 Stop Ringtone
+         const MethodChannel('com.klubnikabytes.kchat/ringtone').invokeMethod('stop'); // 🛑 Stop Ringtone
       }
   }
   
@@ -477,7 +477,7 @@ class WebrtcService {
      if (!retainState) {
         _isCallActive = false;
         onCallStateChange?.call("Ended");
-        const MethodChannel('com.example.whatsapp_clone/ringtone').invokeMethod('stop');
+        const MethodChannel('com.klubnikabytes.kchat/ringtone').invokeMethod('stop');
      }
 
      // Save Log

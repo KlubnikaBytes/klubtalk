@@ -4,6 +4,8 @@ import 'package:whatsapp_clone/screens/login_screen.dart';
 import 'package:whatsapp_clone/screens/chat_list_screen.dart';
 import 'package:whatsapp_clone/screens/web_layout_screen.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
+
 
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
@@ -27,7 +29,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       future: _autoLoginFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-           return const Scaffold(body: Center(child: CircularProgressIndicator()));
+           return const Scaffold(body: ChatListSkeleton());
         }
 
         if (snapshot.hasData && snapshot.data == true) {

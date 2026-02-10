@@ -13,6 +13,7 @@ import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/config/api_config.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final String chatId;
@@ -348,7 +349,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoading) return const Scaffold(body: ContactListSkeleton());
     if (_group == null) return const Scaffold(body: Center(child: Text('Failed to load group')));
 
     final isCommunity = widget.isCommunity;

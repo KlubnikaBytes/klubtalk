@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/services/user_service.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class PrivacyScreen extends StatelessWidget {
   const PrivacyScreen({super.key});
@@ -14,7 +15,7 @@ class PrivacyScreen extends StatelessWidget {
       body: StreamBuilder<UserModel>(
         stream: userService.currentUserStream,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) return const SettingsSkeleton();
           final user = snapshot.data!;
 
           return ListView(

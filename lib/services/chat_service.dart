@@ -206,13 +206,34 @@ class ChatService {
 
   // Get My Chats (with cache-first pattern)
   Future<List<Map<String, dynamic>>> getMyChats() async {
-    try {
-      // 1️⃣ Load instantly from cache
-      final cachedChats = await _cache.getCachedChats();
+      // For backward compatibility or simple usage, we can just return cache if available,
+      // and trigger background fetch. But standard Future usage implies waiting.
+      // So we will stick to the plan: This method returns *something* valid.
+      // Ideally, UI calls getCachedChatsOnly() then fetchRemoteChats().
       
-      // 2️⃣ Fetch from server in background
+      // If we just want a simple "get data" that is fast:
+      final cached = await getCachedChatsOnly();
+      if (cached.isNotEmpty) return cached;
+      
+      return await fetchRemoteChats();
+  }
+
+  // ⚡ New: Get Cached Chats Only (Instant)
+  Future<List<Map<String, dynamic>>> getCachedChatsOnly() async {
+      try {
+         final cachedChats = await _cache.getCachedChats();
+         return List<Map<String, dynamic>>.from(cachedChats);
+      } catch (e) {
+         print("Cache Load Error: $e");
+         return [];
+      }
+  }
+
+  // ⚡ New: Fetch Remote Chats Only (updates cache)
+  Future<List<Map<String, dynamic>>> fetchRemoteChats() async {
+    try {
       final url = Uri.parse(ApiConfig.chatsEndpoint);
-      print("Fetching chats from: $url");
+      // print("Fetching chats from: $url");
       final response = await http.get(
         url,
         headers: await _getHeaders(),
@@ -226,74 +247,20 @@ class ChatService {
         
         return chats;
       } else {
-        // If API fails, return cached data
-        return List<Map<String, dynamic>>.from(cachedChats);
+        throw Exception('Failed to load chats: ${response.statusCode}');
       }
     } catch (e) {
       print('Error fetching chats: $e');
-      // RELEASE DEBUG: Rethrow to see error in UI
       rethrow;
-      /*
-      // Return cached data on error
-      try {
-        final cachedChats = await _cache.getCachedChats();
-        return List<Map<String, dynamic>>.from(cachedChats);
-      } catch (_) {
-        return [];
-      }
-      */
     }
   }
 
-  // Get Messages for a Chat (with cache-first pattern)
+  // Get Messages (with cache-first pattern)
   Future<List<Map<String, dynamic>>> getMessages(String chatId) async {
-    try {
-      print('📥 (Debug) getMessages: Fetching for $chatId');
-      
-      // 1️⃣ Load instantly from cache
-      final cachedMessages = await _cache.getCachedMessages(chatId);
-      print('💾 (Debug) Cache has ${cachedMessages.length} messages');
-      
-      // 2️⃣ Fetch from server in background
-      final response = await http.get(
-        Uri.parse('${ApiConfig.messagesEndpoint}/$chatId'),
-        headers: await _getHeaders(),
-      );
-
-      print('🌐 (Debug) Network Response: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        print('✅ (Debug) Network returned ${data.length} messages');
-        
-        final messages = data.map((m) {
-           final map = Map<String, dynamic>.from(m);
-           // Fix: Map createdAt to timestamp
-           if (map['timestamp'] == null && map['createdAt'] != null) {
-              map['timestamp'] = map['createdAt'];
-           }
-           return map;
-        }).toList();
-        
-        // 3️⃣ Update cache with fresh data
-        await _cache.cacheMessages(chatId, messages);
-        
-        return messages;
-      } else {
-        print('❌ (Debug) API Failed, returning cache. Body: ${response.body}');
-        // If API fails, return cached data
-        return List<Map<String, dynamic>>.from(cachedMessages);
-      }
-    } catch (e) {
-      print('❌ (Debug) Error fetching messages: $e');
-      // Return cached data on error
-      try {
-        final cachedMessages = await _cache.getCachedMessages(chatId);
-        return List<Map<String, dynamic>>.from(cachedMessages);
-      } catch (_) {
-        return [];
-      }
-    }
+      // Backward compatibility: try cache first
+      final cached = await getCachedMessagesOnly(chatId);
+      if (cached.isNotEmpty) return cached;
+      return await fetchRemoteMessages(chatId);
   }
 
   // ⚡ New: Get Cached Messages Only (Instant)

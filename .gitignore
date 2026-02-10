@@ -64,3 +64,13 @@ web/splash/   # Splash screen artifacts
 firebase_options.dart
 backend/service-account-key.json
 backend/src/config/firebase-admin.json
+
+# Dependencies
+node_modules/
+
+# Keys and Secrets
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pem
+key.properties

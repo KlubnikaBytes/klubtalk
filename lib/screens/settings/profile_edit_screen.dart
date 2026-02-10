@@ -7,6 +7,7 @@ import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/services/user_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
 import 'package:whatsapp_clone/screens/settings/filter_screen.dart'; // Ensure this exists
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 import 'package:whatsapp_clone/config/api_config.dart'; // Import ApiConfig
 
@@ -180,7 +181,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       body: StreamBuilder<UserModel>(
         stream: _userService.currentUserStream,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) return const ProfileSkeleton();
           final user = snapshot.data!;
 
           return SingleChildScrollView(

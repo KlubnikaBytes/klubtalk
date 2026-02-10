@@ -1,4 +1,4 @@
-package com.example.whatsapp_clone
+package com.klubnikabytes.kchat
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -37,8 +37,8 @@ class CallNotificationReceiver : BroadcastReceiver() {
     }
     
     companion object {
-        const val ACTION_CALL_INCOMING = "com.example.whatsapp_clone.CALL_INCOMING"
-        const val ACTION_CALL_STOP = "com.example.whatsapp_clone.CALL_STOP"
+        const val ACTION_CALL_INCOMING = "com.klubnikabytes.kchat.CALL_INCOMING"
+        const val ACTION_CALL_STOP = "com.klubnikabytes.kchat.CALL_STOP"
         const val EXTRA_RINGTONE_URI = "ringtone_uri"
     }
 }

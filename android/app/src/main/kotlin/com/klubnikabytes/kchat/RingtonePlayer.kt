@@ -1,4 +1,4 @@
-package com.example.whatsapp_clone
+package com.klubnikabytes.kchat
 
 import android.content.Context
 import android.media.AudioAttributes

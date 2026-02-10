@@ -1,4 +1,4 @@
-package com.example.whatsapp_clone
+package com.klubnikabytes.kchat
 
 import android.content.Context
 import android.net.Uri
@@ -13,7 +13,7 @@ import java.io.InputStream
 
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.whatsapp_clone/storage"
+    private val CHANNEL = "com.klubnikabytes.kchat/storage"
 
     private var pendingResult: MethodChannel.Result? = null
     private val RINGTONE_PICKER_REQUEST_CODE = 999
@@ -32,7 +32,7 @@ class MainActivity : FlutterActivity() {
         }
 
         // Ringtone Channel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.whatsapp_clone/ringtone").setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.klubnikabytes.kchat/ringtone").setMethodCallHandler { call, result ->
              android.util.Log.d("RingtoneChannel", "🔍 Method called: ${call.method}")
              when (call.method) {
                  "playOutgoing" -> {

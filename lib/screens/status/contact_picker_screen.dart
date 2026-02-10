@@ -4,6 +4,7 @@ import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/widgets/avatar_widget.dart';
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class ContactPickerScreen extends StatefulWidget {
   final String title;
@@ -34,8 +35,26 @@ class _ContactPickerScreenState extends State<ContactPickerScreen> {
 
   Future<void> _fetchContacts() async {
     try {
+      // 1. Load from cache
+      final cached = await _contactService.getCachedRegisteredUsersOnly();
+      
+      if (cached.isNotEmpty) {
+          // ✅ Cache exists - use it and SKIP API call
+          final currentUid = AuthService().currentUserId;
+          final items = cached.where((u) => u.uid != currentUid).toList();
+          
+          if (mounted) {
+            setState(() {
+              _contacts = items;
+              _isLoading = false;
+            });
+          }
+          return; // ⚡ Stop here - no API call!
+      }
+      
+      // 2. No cache? Fetch from API (first time only)
       final currentUid = AuthService().currentUserId;
-      final users = await _contactService.getRegisteredUsers();
+      final users = await _contactService.fetchRemoteRegisteredUsers();
       final items = users.where((u) => u.uid != currentUid).toList();
       
       if (mounted) {
@@ -78,7 +97,7 @@ class _ContactPickerScreenState extends State<ContactPickerScreen> {
         foregroundColor: Colors.white,
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator()) 
+          ? const ContactListSkeleton() 
           : Column(
               children: [
                  if (_selectedIds.isNotEmpty)

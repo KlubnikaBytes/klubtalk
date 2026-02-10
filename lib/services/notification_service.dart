@@ -152,7 +152,7 @@ class NotificationService {
     // Get System Ringtone URI from Native
     String? ringtoneUri;
     try {
-      const channel = MethodChannel('com.example.whatsapp_clone/ringtone');
+      const channel = MethodChannel('com.klubnikabytes.kchat/ringtone');
       ringtoneUri = await channel.invokeMethod<String>('getSystemRingtoneUri');
       print('🎵 Native System Ringtone URI: $ringtoneUri');
     } catch (e) {
@@ -392,8 +392,8 @@ class NotificationService {
       // 🛑 STOP RINGTONE via Broadcast
       try {
         final intent = AndroidIntent(
-          action: 'com.example.whatsapp_clone.CALL_STOP',
-          package: 'com.example.whatsapp_clone',
+          action: 'com.klubnikabytes.kchat.CALL_STOP',
+          package: 'com.klubnikabytes.kchat',
           flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
         );
         await intent.sendBroadcast();
@@ -416,8 +416,8 @@ class NotificationService {
         
         // Send broadcast to CallNotificationReceiver
         final intent = AndroidIntent(
-          action: 'com.example.whatsapp_clone.CALL_INCOMING',
-          package: 'com.example.whatsapp_clone',
+          action: 'com.klubnikabytes.kchat.CALL_INCOMING',
+          package: 'com.klubnikabytes.kchat',
           arguments: <String, dynamic>{'ringtone_uri': ringtoneUri},
           flags: <int>[268435456], // FLAG_INCLUDE_STOPPED_PACKAGES
         );

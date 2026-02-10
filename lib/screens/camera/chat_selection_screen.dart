@@ -7,6 +7,7 @@ import 'package:whatsapp_clone/models/contact.dart';
 import 'package:whatsapp_clone/services/auth_service.dart';
 import 'package:whatsapp_clone/services/contact_service.dart';
 import 'package:whatsapp_clone/screens/chat_list_screen.dart'; // Reuse logic if possible, or simple list
+import 'package:whatsapp_clone/widgets/common/skeletons.dart';
 
 class ChatSelectionScreen extends StatefulWidget {
   final File mediaFile;
@@ -143,7 +144,7 @@ class _ChatSelectionScreenState extends State<ChatSelectionScreen> {
         ),
       ),
       body: _isLoading 
-         ? const Center(child: CircularProgressIndicator()) 
+         ? const ChatListSkeleton() 
          : Stack(
            children: [
              ListView.builder(

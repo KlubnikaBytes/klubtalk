@@ -56,48 +56,14 @@ class ContactService {
 
   // Fetch ALL Registered Users via API (with cache-first pattern)
   Future<List<UserModel>> getRegisteredUsers() async {
-     try {
-       final token = AuthService().token;
-       if (token == null) return [];
+       // Backward compatibility: Try cache, if empty, await remote.
+       final cached = await getCachedRegisteredUsersOnly();
+       if (cached.isNotEmpty) return cached;
+       return await fetchRemoteRegisteredUsers();
+  }
 
-       // 1️⃣ Load instantly from cache
-       final cachedData = await _cache.getCachedContacts();
-       List<UserModel> cachedUsers = [];
-       if (cachedData.isNotEmpty) {
-         try {
-           cachedUsers = (cachedData as List).map((item) {
-             if (item is Map<String, dynamic>) {
-               return UserModel.fromMap(item, item['_id'] ?? '');
-             }
-             return null;
-           }).whereType<UserModel>().toList();
-         } catch (e) {
-           print('Cache parse error: $e');
-         }
-       }
-
-       // 2️⃣ Fetch from server in background
-       final response = await http.get(
-         Uri.parse('${ApiConfig.baseUrl}/users'),
-         headers: {
-           'Authorization': 'Bearer $token',
-         }
-       );
-
-       if (response.statusCode == 200) {
-         final List<dynamic> data = jsonDecode(response.body);
-         
-         // 3️⃣ Update cache with fresh data
-         await _cache.cacheContacts(data);
-         
-         return data.map((item) => UserModel.fromMap(item, item['_id'] ?? '')).toList();
-       }
-       
-       // If API fails, return cached data
-       return cachedUsers;
-     } catch (e) {
-       print('Error fetching users: $e');
-       // Return cached data on error
+  // ⚡ New: Get Cached Users Only
+  Future<List<UserModel>> getCachedRegisteredUsersOnly() async {
        try {
          final cachedData = await _cache.getCachedContacts();
          if (cachedData.isNotEmpty) {
@@ -108,8 +74,37 @@ class ContactService {
              return null;
            }).whereType<UserModel>().toList();
          }
-       } catch (_) {}
+       } catch (e) {
+         print('Cache parse error: $e');
+       }
        return [];
+  }
+
+  // ⚡ New: Fetch Remote Users Only
+  Future<List<UserModel>> fetchRemoteRegisteredUsers() async {
+     try {
+       final token = AuthService().token;
+       if (token == null) return [];
+
+       final response = await http.get(
+         Uri.parse('${ApiConfig.baseUrl}/users'),
+         headers: {
+           'Authorization': 'Bearer $token',
+         }
+       );
+
+       if (response.statusCode == 200) {
+         final List<dynamic> data = jsonDecode(response.body);
+         
+         // Update cache with fresh data
+         await _cache.cacheContacts(data);
+         
+         return data.map((item) => UserModel.fromMap(item, item['_id'] ?? '')).toList();
+       }
+       throw Exception('Failed to load users: ${response.statusCode}');
+     } catch (e) {
+       print('Error fetching users: $e');
+       rethrow;
      }
   }
 
