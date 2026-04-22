@@ -79,7 +79,7 @@ class NavigationPanel extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text(
-                      'Messaging App v1.0',
+                      'KlubTalk v1.0',
                       style: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 12,

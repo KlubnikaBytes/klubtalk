@@ -65,7 +65,13 @@ const app = express();
 
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: true, // Allow all origins (development)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
+    credentials: true
+}));
+app.options('*', cors()); // Enable pre-flight for all routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

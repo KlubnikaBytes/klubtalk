@@ -9,6 +9,25 @@
       "client_info": {
         "mobilesdk_app_id": "1:730649803168:android:6bcb7fa9fde6039205ccc5",
         "android_client_info": {
+          "package_name": "com.example.whatsapp_clone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVBE7D99JKd9MDm3637u2xW0b4H-Iohuk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:730649803168:android:ba9908a7d1d4214705ccc5",
+        "android_client_info": {
           "package_name": "com.klubnikabytes.kchat"
         }
       },

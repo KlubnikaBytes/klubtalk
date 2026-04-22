@@ -48,11 +48,13 @@ class MessageBubble extends StatelessWidget {
                     // Render text
                     Padding(
                       padding: const EdgeInsets.only(right: 0, bottom: 4), 
-                      child: Text(
-                        message.text,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: textColor,
-                          fontSize: 16,
+                      child: RichText(
+                        text: TextSpan(
+                          children: _buildMessageSpans(context, message.text, textColor),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: textColor,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
@@ -84,5 +86,29 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<InlineSpan> _buildMessageSpans(BuildContext context, String text, Color textColor) {
+    List<InlineSpan> spans = [];
+    final words = text.split(' ');
+
+    for (var i = 0; i < words.length; i++) {
+      final word = words[i];
+      if (word.startsWith('@') && word.length > 1) {
+        spans.add(TextSpan(
+          text: '$word ',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.blueAccent, // Or use a theme color
+          ),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: '$word ',
+          style: TextStyle(color: textColor),
+        ));
+      }
+    }
+    return spans;
   }
 }

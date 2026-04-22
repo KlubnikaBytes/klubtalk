@@ -108,9 +108,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
   bool _isLoadingSearch = false;
 
   // Dynamic Group Info
-  // Dynamic Group Info - Already declared above
   // String _displayName = '';
   // String _displayAvatar = '';
+
+  // Mention State
+  List<Map<String, dynamic>> _groupParticipants = [];
+  List<Map<String, dynamic>> _filteredParticipants = [];
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  bool _isMentioning = false;
+
 
 
   @override
@@ -139,9 +146,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
     if (!widget.isGroup) SocketService().checkOnline(widget.peerId); // Check initial online status
 
     _messageController.addListener(() {
+      final text = _messageController.text;
+      final selection = _messageController.selection;
+      
       setState(() {
-        _isTyping = _messageController.text.trim().isNotEmpty;
+        _isTyping = text.trim().isNotEmpty;
       });
+
+      // Mention Detection
+      if (widget.isGroup && selection.isValid && selection.baseOffset > 0) {
+         final textBeforeCursor = text.substring(0, selection.baseOffset);
+         final lastAt = textBeforeCursor.lastIndexOf('@');
+         
+         if (lastAt != -1) {
+            final query = textBeforeCursor.substring(lastAt + 1);
+            // Check if there are spaces in query (simple name check)
+            // Allow spaces for names like "John Doe" but maybe limit length?
+            if (query.length < 20 && !query.contains('\n')) {
+               _filterParticipants(query);
+            } else {
+               _hideMentionOverlay();
+            }
+         } else {
+            _hideMentionOverlay();
+         }
+      } else {
+         _hideMentionOverlay();
+      }
+
       
       // Emit Typing Event
       if (_isTyping) {
@@ -438,6 +470,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
              if (widget.isGroup) {
                  _displayName = currentChat['groupName'] ?? currentChat['name'] ?? _displayName;
                  _displayAvatar = currentChat['groupAvatar'] ?? currentChat['avatar'] ?? _displayAvatar;
+                 _fetchGroupParticipants(currentChat);
              }
              // For both:
              _currentWallpaper = currentChat['wallpaper'] ?? '';
@@ -445,6 +478,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
       }
     } catch (e) {
       print("Error loading chat details: $e");
+    }
+  }
+
+  Future<void> _fetchGroupParticipants(Map<String, dynamic> chatData) async {
+    try {
+      if (chatData['participants'] != null) {
+        final rawList = List<Map<String, dynamic>>.from(
+          (chatData['participants'] as List).map((x) => x is Map ? x : {'_id': x.toString()})
+        );
+
+        List<Map<String, dynamic>> resolved = [];
+        for (var p in rawList) {
+          final uid = p['_id'] ?? p['id'] ?? '';
+          if (uid == AuthService().currentUserId) continue; // Don't mention self
+
+          String name = 'Unknown';
+          final phone = p['phoneNumber'] ?? p['phone'] ?? '';
+          
+          if (phone.isNotEmpty) {
+             name = await ContactService().getContactNameFromPhone(phone);
+          } else {
+             name = await ContactService().resolveContactName(uid);
+          }
+
+          resolved.add({
+            'id': uid,
+            'name': name,
+            'avatar': p['avatar'] ?? '',
+            'phone': phone
+          });
+        }
+
+        if (mounted) {
+          setState(() {
+            _groupParticipants = resolved;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error fetching group participants for mentions: $e");
     }
   }
 
@@ -1279,6 +1352,107 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
      }
   }
 
+  // --- MENTION HELPERS ---
+
+  void _filterParticipants(String query) {
+    setState(() {
+      _filteredParticipants = _groupParticipants.where((p) {
+        final name = (p['name'] as String).toLowerCase();
+        final phone = (p['phone'] as String).toLowerCase();
+        final q = query.toLowerCase();
+        return name.contains(q) || phone.contains(q);
+      }).toList();
+    });
+
+    if (_filteredParticipants.isNotEmpty) {
+      _showMentionOverlay();
+    } else {
+      _hideMentionOverlay();
+    }
+  }
+
+  void _showMentionOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.remove();
+    }
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        width: MediaQuery.of(context).size.width - 100, // Adjust width as needed
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, -200), // Show above input
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+            child: Container(
+              height: 200,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.white,
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+              ),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: _filteredParticipants.length,
+                itemBuilder: (context, index) {
+                  final user = _filteredParticipants[index];
+                  return ListTile(
+                    leading: AvatarWidget(
+                      imageUrl: _getFullUrl(user['avatar']), 
+                      radius: 16
+                    ),
+                    title: Text(user['name'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    subtitle: user['phone'].isNotEmpty 
+                      ? Text(user['phone'], style: const TextStyle(fontSize: 12, color: Colors.grey)) 
+                      : null,
+                    onTap: () => _addMention(user),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+    setState(() => _isMentioning = true);
+  }
+
+  void _hideMentionOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.remove();
+      _overlayEntry = null;
+    }
+    setState(() => _isMentioning = false);
+  }
+
+  void _addMention(Map<String, dynamic> user) {
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+    
+    if (selection.isValid && selection.baseOffset > 0) {
+       final textBeforeCursor = text.substring(0, selection.baseOffset);
+       final lastAt = textBeforeCursor.lastIndexOf('@');
+       
+       if (lastAt != -1) {
+          final prefix = text.substring(0, lastAt);
+          final suffix = text.substring(selection.baseOffset);
+          final newText = '$prefix@${user['name']} $suffix';
+          
+          _messageController.text = newText;
+          _messageController.selection = TextSelection.fromPosition(
+             TextPosition(offset: lastAt + user['name'].toString().length + 2) // +2 for @ and space
+          );
+       }
+    }
+    _hideMentionOverlay();
+    _focusNode.requestFocus();
+  }
+
   Widget _buildMessageInput() {
      if (_isPeerBlocked) {
        return Container(
@@ -1353,8 +1527,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
            print("🎨 INPUT FIELD: color=rgba(255,255,255,0.85)");
            return Row(
          children: [
-           Expanded(
-             child: Container(
+            Expanded(
+              child: CompositedTransformTarget(
+                link: _layerLink,
+                child: Container(
                decoration: BoxDecoration(
                  color: Colors.white.withOpacity(0.95),
                  borderRadius: BorderRadius.circular(30),
@@ -1407,6 +1583,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver, Ro
                ),
              ),
            ),
+         ),
            const SizedBox(width: 8),
            if (_isTyping)
              GestureDetector(
