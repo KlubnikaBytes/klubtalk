@@ -83,9 +83,11 @@ void main() async {
 
   // 2. Initialize Firebase (Critical for FCM/Auth verification)
   try {
-    await Firebase.initializeApp();
-    // Register background handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    if (!kIsWeb) {
+      await Firebase.initializeApp();
+      // Register background handler
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    }
   } catch (e) {
     print("❌ Firebase Init Failed: $e");
   }
@@ -93,7 +95,9 @@ void main() async {
   // 3. Initialize Services
   try {
     await NotificationService.initialize();
-    await FcmService().initialize();
+    if (!kIsWeb) {
+      await FcmService().initialize();
+    }
   } catch (e) {
     print("❌ Service Init Failed: $e");
   }

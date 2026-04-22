@@ -10,6 +10,7 @@ import 'package:android_intent_plus/android_intent.dart'; // For fallback broadc
 import 'package:whatsapp_clone/services/webrtc_service.dart';
 import 'package:whatsapp_clone/screens/call/call_screen.dart';
 import 'package:whatsapp_clone/main.dart'; // For navigatorKey
+import 'package:flutter/foundation.dart';
 
 // Top-level function for background execution
 @pragma('vm:entry-point')
@@ -152,9 +153,11 @@ class NotificationService {
     // Get System Ringtone URI from Native
     String? ringtoneUri;
     try {
-      const channel = MethodChannel('com.klubnikabytes.kchat/ringtone');
-      ringtoneUri = await channel.invokeMethod<String>('getSystemRingtoneUri');
-      print('🎵 Native System Ringtone URI: $ringtoneUri');
+      if (!kIsWeb) {
+        const channel = MethodChannel('com.klubnikabytes.kchat/ringtone');
+        ringtoneUri = await channel.invokeMethod<String>('getSystemRingtoneUri');
+        print('🎵 Native System Ringtone URI: $ringtoneUri');
+      }
     } catch (e) {
       print('Error getting system ringtone: $e');
     }

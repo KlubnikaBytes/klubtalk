@@ -13,15 +13,21 @@ connectDB();
 
 // 3. Initialize Firebase Admin SDK for Push Notifications
 const admin = require('firebase-admin');
-const serviceAccount = require('./src/config/firebase-admin.json');
 
 try {
+    let serviceAccount;
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        serviceAccount = require(path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS));
+    } else {
+        serviceAccount = require('./src/config/firebase-admin.json');
+    }
+    
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
     });
     console.log('🔥 Firebase Admin SDK initialized');
 } catch (error) {
-    console.error('Failed to initialize Firebase Admin SDK:', error);
+    console.error('Failed to initialize Firebase Admin SDK: File missing or invalid.', error.message);
 }
 
 
@@ -65,12 +71,7 @@ const app = express();
 
 
 // Middleware
-app.use(cors({
-    origin: true, // Allow all origins (development)
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
-    credentials: true
-}));
+app.use(cors()); // Allow all origins for now
 app.options('*', cors()); // Enable pre-flight for all routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -143,11 +144,11 @@ app.get('/ping', (req, res) => res.send('pong'));
 app.use('/', apiRoutes);
 
 // Start Server
-const PORT = process.env.PORT || 6000;
+const PORT = process.env.PORT || 7000;
 
 // Root Route
-app.get("/", (req, res) => {
-    res.send("Antigravity backend running 🚀");
+app.get('/', (req, res) => {
+  res.send('Backend running');
 });
 
 // Start Server with Socket.IO
@@ -158,8 +159,8 @@ const socketController = require('./src/socket');
 // Initialize with Server
 socketController.init(server);
 
-server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
     console.log(`Media serving at ${process.env.VPS_PUBLIC_URL || 'http://localhost:' + PORT}/uploads/`);
 });
 
