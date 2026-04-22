@@ -7,23 +7,23 @@ class ApiConfig {
     if (kIsWeb) {
       // VPS Backend (Production)
       try {
-        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:7000';
       } catch (_) {
-        url = 'http://72.62.73.45:6000'; // Fallback if dotenv not initialized
+        url = 'http://72.62.73.45:7000'; // Fallback if dotenv not initialized
       }
     } else if (defaultTargetPlatform == TargetPlatform.android) {
       // VPS Backend (Production)
       try {
-        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:7000';
       } catch (_) {
-        url = 'http://72.62.73.45:6000'; // Fallback
+        url = 'http://72.62.73.45:7000'; // Fallback
       }
     } else {
       // iOS, Windows, macOS, Linux
       try {
-        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:6000';
+        url = dotenv.env['VPS_BACKEND_URL'] ?? 'http://72.62.73.45:7000';
       } catch (_) {
-        url = 'http://72.62.73.45:6000'; // Fallback
+        url = 'http://72.62.73.45:7000'; // Fallback
       }
     }
     return url;

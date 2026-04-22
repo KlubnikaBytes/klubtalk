@@ -39,10 +39,18 @@ exports.sendOtp = async (req, res) => {
         await sendOtpSms(phone, otp);
         console.log('   ✅ OTP SMS sent successfully');
 
-        res.json({ message: 'OTP sent successfully' });
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent successfully",
+            provider: "DLT",
+            status: "sent"
+        });
     } catch (error) {
         console.error('❌ Send OTP Error:', error);
-        res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 };
 
@@ -61,7 +69,7 @@ exports.verifyOtp = async (req, res) => {
             // Debug: check if ANY otp exists for this phone
             const anyOtp = await Otp.find({ phone });
             console.log(`DEBUG: Any OTPs for this phone?`, anyOtp);
-            return res.status(400).json({ message: 'Invalid or expired OTP' });
+            return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
         }
 
         // OTP Valid!
@@ -90,21 +98,27 @@ exports.verifyOtp = async (req, res) => {
             expiresIn: '7d'
         });
 
-        res.json({
-            token,
-            user: {
-                _id: user._id,
-                name: user.name,
-                phone: user.phone,
-                avatar: user.avatar,
-                about: user.about
-            },
-            isNewUser
+        return res.status(200).json({
+            success: true,
+            data: {
+                token,
+                isNewUser,
+                user: {
+                    uid: user._id,
+                    phone: user.phone,
+                    name: user.name,
+                    avatar: user.avatar,
+                    about: user.about
+                }
+            }
         });
 
     } catch (error) {
         console.error('Verify OTP Error:', error);
-        res.status(500).json({ message: 'Verification failed' });
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 };
 
