@@ -12,23 +12,7 @@ dotenv.config();
 connectDB();
 
 // 3. Initialize Firebase Admin SDK for Push Notifications
-const admin = require('firebase-admin');
-
-try {
-    let serviceAccount;
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        serviceAccount = require(path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS));
-    } else {
-        serviceAccount = require('./src/config/firebase-admin.json');
-    }
-    
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log('🔥 Firebase Admin SDK initialized');
-} catch (error) {
-    console.error('Failed to initialize Firebase Admin SDK: File missing or invalid.', error.message);
-}
+require('./src/config/firebase');
 
 
 // --- Auto-Repair: Clean up broken chats ---
