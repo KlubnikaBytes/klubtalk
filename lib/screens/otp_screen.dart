@@ -21,17 +21,30 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final _otpController = TextEditingController();
   bool _isLoading = false;
+  bool _isVerifying = false;
 
   Future<void> _verifyOtp() async {
-    final otp = _otpController.text.trim();
-    if (otp.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a 6-digit code')),
-      );
+    if (_isLoading || _isVerifying) {
+      debugPrint('Prevented duplicate API call');
       return;
     }
-
+    
+    _isVerifying = true;
     setState(() => _isLoading = true);
+    
+    debugPrint('Executing _verifyOtp strictly ONCE');
+
+    final otp = _otpController.text.trim();
+    if (otp.length != 6) {
+      _isVerifying = false;
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a 6-digit code')),
+        );
+      }
+      return;
+    }
 
     try {
       // Create Custom Session via Backend
@@ -63,10 +76,14 @@ class _OtpScreenState extends State<OtpScreen> {
       }
 
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      // Ensure loading resets ONLY on failure
+      _isVerifying = false; 
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     }
   }
 
@@ -104,7 +121,8 @@ class _OtpScreenState extends State<OtpScreen> {
                           backgroundColor: const Color(0xFFC92136),
                           foregroundColor: Colors.white,
                         ),
-                        onPressed: _verifyOtp,
+                        // Disable button properly
+                        onPressed: _isLoading || _isVerifying ? null : _verifyOtp,
                         child: const Text('Verify'),
                       ),
               ],
