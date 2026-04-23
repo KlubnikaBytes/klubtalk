@@ -2,6 +2,7 @@ const Otp = require('../models/Otp');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const { admin } = require('../config/firebase');
 
 const SMS_API_KEY = process.env.TWO_FACTOR_API_KEY;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod';
@@ -56,15 +57,14 @@ exports.sendOtp = async (req, res) => {
 
 exports.verifyOtp = async (req, res) => {
     try {
-        console.log("VERIFY HIT TIME:", new Date().toISOString());
+        console.log("STEP 1: Request received", new Date().toISOString());
         const { phone, otp } = req.body;
-        console.log("Searching OTP:", phone, otp);
-
+        
+        console.log("STEP 2: Searching OTP...", phone, otp);
         if (!phone || !otp) return res.status(400).json({ success: false, message: 'Phone and OTP are required' });
 
-        // Check DB
         const record = await Otp.findOne({ phone, otp });
-        console.log("DB result:", record);
+        console.log("STEP 3: OTP found:", record ? record._id : "null");
 
         if (!record) {
             return res.status(400).json({
@@ -73,7 +73,6 @@ exports.verifyOtp = async (req, res) => {
             });
         }
 
-        // Optional expiry check
         const now = new Date();
         if (record.createdAt && (now - record.createdAt > 5 * 60 * 1000)) {
             return res.status(400).json({
@@ -82,7 +81,6 @@ exports.verifyOtp = async (req, res) => {
             });
         }
 
-        // Find or Create User
         let user = await User.findOne({ phone });
         let isNewUser = false;
 
@@ -97,21 +95,41 @@ exports.verifyOtp = async (req, res) => {
             await user.save();
         }
 
-        console.log("Deleting OTP now...");
-        // DELETE AFTER SUCCESS
+        console.log("STEP 4: Deleting OTP...");
         await Otp.deleteMany({ phone });
+        console.log("STEP 5: OTP deleted");
 
-        // Generate JWT
-        const token = jwt.sign({ uid: user._id.toString(), phone: user.phone }, JWT_SECRET, {
+        const jwtToken = jwt.sign({ uid: user._id.toString(), phone: user.phone }, JWT_SECRET, {
             expiresIn: '7d'
         });
+
+        console.log("STEP 6: Before Firebase call");
+        
+        if (!admin || !admin.apps || admin.apps.length === 0) {
+            console.error("Firebase NOT initialized properly");
+            throw new Error("Firebase is not initialized properly");
+        }
+        
+        console.log("STEP 7: Firebase instance:", typeof admin === 'object' ? "Valid Object" : typeof admin);
+        console.log("STEP 8: Firebase apps:", admin.apps.length);
+        
+        console.log("STEP 9: Calling Firebase auth...");
+        let firebaseToken = null;
+        try {
+            firebaseToken = await admin.auth().createCustomToken(user._id.toString());
+            console.log("STEP 10: Firebase success");
+        } catch (fbErr) {
+            console.error("STEP ERROR:", fbErr);
+            throw new Error("Firebase auth failed: " + fbErr.message);
+        }
 
         console.log("Sending success response...");
         return res.json({
             success: true,
             message: "OTP verified successfully",
             data: {
-                token,
+                token: jwtToken,
+                firebaseToken: firebaseToken,
                 isNewUser,
                 user: {
                     uid: user._id,
