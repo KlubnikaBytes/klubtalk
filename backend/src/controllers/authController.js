@@ -56,29 +56,33 @@ exports.sendOtp = async (req, res) => {
 
 exports.verifyOtp = async (req, res) => {
     try {
+        console.log("VERIFY HIT TIME:", new Date().toISOString());
         const { phone, otp } = req.body;
         console.log("Searching OTP:", phone, otp);
 
-        if (!phone || !otp) return res.status(400).json({ message: 'Phone and OTP are required' });
+        if (!phone || !otp) return res.status(400).json({ success: false, message: 'Phone and OTP are required' });
 
         // Check DB
         const record = await Otp.findOne({ phone, otp });
         console.log("DB result:", record);
 
         if (!record) {
-            return res.status(400).json({ success: false, message: 'Invalid OTP' });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid or already used OTP"
+            });
         }
 
-        // Expiry check (5 minutes)
+        // Optional expiry check
         const now = new Date();
         if (record.createdAt && (now - record.createdAt > 5 * 60 * 1000)) {
-            await Otp.deleteMany({ phone });
-            return res.status(400).json({ success: false, message: 'OTP expired' });
+            return res.status(400).json({
+                success: false,
+                message: "OTP expired"
+            });
         }
 
-        // OTP Valid!
-        // 2. Find or Create User
-        // Note: Our User model might default some fields.
+        // Find or Create User
         let user = await User.findOne({ phone });
         let isNewUser = false;
 
@@ -86,24 +90,26 @@ exports.verifyOtp = async (req, res) => {
             isNewUser = true;
             user = new User({
                 phone,
-                name: '', // Empty name triggers profile setup on frontend
+                name: '', 
                 about: 'Hey there! I am using WhatsApp.',
                 isRegistered: true,
-                // firebaseUid: 'optional_or_removed' 
             });
             await user.save();
         }
 
-        // 1. Delete OTP used ONLY AFTER SUCCESS
+        console.log("Deleting OTP now...");
+        // DELETE AFTER SUCCESS
         await Otp.deleteMany({ phone });
 
-        // 3. Generate JWT
+        // Generate JWT
         const token = jwt.sign({ uid: user._id.toString(), phone: user.phone }, JWT_SECRET, {
             expiresIn: '7d'
         });
 
-        return res.status(200).json({
+        console.log("Sending success response...");
+        return res.json({
             success: true,
+            message: "OTP verified successfully",
             data: {
                 token,
                 isNewUser,
