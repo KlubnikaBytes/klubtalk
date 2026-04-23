@@ -57,25 +57,26 @@ exports.sendOtp = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
     try {
         const { phone, otp } = req.body;
-        console.log(`DEBUG: verifyOtp called with phone: '${phone}', otp: '${otp}'`);
+        console.log("Searching OTP:", phone, otp);
 
         if (!phone || !otp) return res.status(400).json({ message: 'Phone and OTP are required' });
 
         // Check DB
-        const validOtp = await Otp.findOne({ phone, otp });
-        console.log(`DEBUG: DB Find result:`, validOtp);
+        const record = await Otp.findOne({ phone, otp });
+        console.log("DB result:", record);
 
-        if (!validOtp) {
-            // Debug: check if ANY otp exists for this phone
-            const anyOtp = await Otp.find({ phone });
-            console.log(`DEBUG: Any OTPs for this phone?`, anyOtp);
-            return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+        if (!record) {
+            return res.status(400).json({ success: false, message: 'Invalid OTP' });
+        }
+
+        // Expiry check (5 minutes)
+        const now = new Date();
+        if (record.createdAt && (now - record.createdAt > 5 * 60 * 1000)) {
+            await Otp.deleteMany({ phone });
+            return res.status(400).json({ success: false, message: 'OTP expired' });
         }
 
         // OTP Valid!
-        // 1. Delete OTP used
-        await Otp.deleteMany({ phone });
-
         // 2. Find or Create User
         // Note: Our User model might default some fields.
         let user = await User.findOne({ phone });
@@ -92,6 +93,9 @@ exports.verifyOtp = async (req, res) => {
             });
             await user.save();
         }
+
+        // 1. Delete OTP used ONLY AFTER SUCCESS
+        await Otp.deleteMany({ phone });
 
         // 3. Generate JWT
         const token = jwt.sign({ uid: user._id.toString(), phone: user.phone }, JWT_SECRET, {
